@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Painel CNU - Bloco 7 | Ultimate 5.5</title>
+    <title>Painel CNU - Bloco 7 | Ultimate 6.0</title>
     
     <!-- Bibliotecas -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -17,7 +17,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
     <style>
-        :root { --bg: #f1f5f9; --surface: #ffffff; --primary: #4f46e5; --text: #0f172a; }
+        :root { --bg: #f3f4f6; --surface: #ffffff; --primary: #4f46e5; --text: #111827; }
         body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
 
@@ -28,12 +28,12 @@
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         
         /* Glassmorphism & Cards */
-        .glass-panel { background: rgba(255, 255, 255, 0.98); border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03); border-radius: 12px; }
+        .glass-panel { background: rgba(255, 255, 255, 0.98); border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03); border-radius: 12px; }
         .glass-modal { background: #ffffff; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); }
 
         /* Badges */
         .badge { display: inline-flex; align-items: center; justify-content: center; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; border: 1px solid transparent; letter-spacing: 0.02em; }
-        .tag-ac { background: #f8fafc; color: #64748b; border-color: #e2e8f0; }
+        .tag-ac { background: #f9fafb; color: #6b7280; border-color: #e5e7eb; }
         .tag-pn { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
         .tag-pcd { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
         .tag-pi { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
@@ -43,9 +43,9 @@
         .pill { padding: 4px 10px; border-radius: 6px; font-size: 0.65rem; font-weight: 800; text-transform: uppercase; text-align: center; min-width: 75px; display: inline-block; white-space: nowrap; }
         .st-vaga { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
         .st-cr { background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; }
-        .st-elim { background: #f1f5f9; color: #94a3b8; border: 1px solid #e2e8f0; }
+        .st-elim { background: #f3f4f6; color: #9ca3af; border: 1px solid #e5e7eb; }
 
-        .hover-row:hover { background-color: #f8fafc; cursor: pointer; transform: scale-[1.001]; transition: transform 0.1s; position: relative; z-index: 10; box-shadow: 0 2px 3px rgba(0,0,0,0.02); }
+        .hover-row:hover { background-color: #f9fafb; cursor: pointer; transform: scale-[1.001]; transition: transform 0.1s; position: relative; z-index: 10; box-shadow: 0 2px 3px rgba(0,0,0,0.02); }
         .layout-container { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         
         /* Mobile Utilities */
@@ -53,9 +53,9 @@
             .mobile-stack { flex-direction: column; }
             .mobile-scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
             /* Ajuste Header Mobile */
-            header { height: auto; min-height: 4rem; padding-top: 0.5rem; padding-bottom: 0.5rem; flex-wrap: wrap; }
-            .header-title-container { width: 100%; margin-bottom: 0.5rem; justify-content: center; text-align: center; }
-            .header-actions-container { width: 100%; justify-content: center; gap: 0.5rem; }
+            header { height: auto; min-height: 4rem; padding-top: 0.75rem; padding-bottom: 0.75rem; flex-wrap: wrap; justify-content: center; }
+            .header-title-container { width: 100%; margin-bottom: 0.75rem; justify-content: center; text-align: center; }
+            .header-actions-container { width: 100%; justify-content: center; gap: 0.5rem; flex-wrap: wrap; }
         }
         
         /* Animations */
@@ -63,29 +63,36 @@
         .animate-fade-in { animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
     </style>
 </head>
-<body class="text-slate-800">
+<body class="text-slate-800 bg-slate-50">
 
     <div class="layout-container">
         
-        <!-- Header -->
-        <header class="bg-white border-b border-slate-200 flex-none z-50 flex items-center justify-between px-4 lg:px-6 shadow-sm relative transition-all">
-            <div class="flex items-center gap-2 lg:gap-3 overflow-hidden header-title-container">
-                <div class="bg-slate-800 text-white p-2 rounded-lg shadow-lg flex-none transform transition hover:scale-105 hidden lg:block">
-                    <i class="fa-solid fa-chart-simple"></i>
+        <!-- Header (Ajustado) -->
+        <header class="bg-white border-b border-slate-200 flex-none z-50 flex items-center justify-between px-6 lg:px-8 shadow-sm relative transition-all">
+            
+            <!-- Logo & Titulo (Mais espaçado) -->
+            <div class="flex items-center gap-4 lg:gap-5 overflow-hidden header-title-container py-1">
+                <div class="bg-slate-800 text-white p-2.5 rounded-xl shadow-lg flex-none transform transition hover:scale-105 hidden lg:block">
+                    <i class="fa-solid fa-chart-simple text-lg"></i>
                 </div>
                 <div class="flex-none">
-                    <h1 class="font-bold text-slate-900 uppercase tracking-tight text-xs lg:text-sm leading-tight">Painel CNU <span class="hidden sm:inline text-slate-400">|</span> <span class="text-indigo-600">Bloco 7</span></h1>
-                    <p class="text-[9px] text-slate-400 font-medium uppercase tracking-wider hidden sm:block">Justiça e Defesa</p>
+                    <h1 class="font-bold text-slate-900 uppercase tracking-tight text-xs lg:text-sm leading-tight flex flex-col lg:flex-row lg:items-center gap-1">
+                        <span>Painel CNU</span>
+                        <span class="hidden lg:inline text-slate-300 mx-1">|</span>
+                        <span class="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-[10px] lg:text-xs">Bloco 7</span>
+                    </h1>
+                    <p class="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mt-0.5">Justiça e Defesa</p>
                 </div>
             </div>
             
-            <div class="flex items-center gap-2 header-actions-container">
+            <!-- Actions -->
+            <div class="flex items-center gap-3 header-actions-container">
                 <!-- FGV Links -->
-                <a href="https://conhecimento.fgv.br/cpnu2" target="_blank" class="h-8 px-2 lg:px-3 flex items-center justify-center gap-2 bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-700 hover:bg-indigo-100 transition-colors shadow-sm" title="Site Oficial do Concurso">
-                    <i class="fa-solid fa-globe"></i> <span class="hidden lg:inline text-xs font-bold">Edital</span>
+                <a href="https://conhecimento.fgv.br/cpnu2" target="_blank" class="h-9 px-3 flex items-center justify-center gap-2 bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-700 hover:bg-indigo-100 transition-colors shadow-sm group" title="Site Oficial do Concurso">
+                    <i class="fa-solid fa-globe group-hover:scale-110 transition-transform"></i> <span class="hidden lg:inline text-xs font-bold">Edital</span>
                 </a>
-                <a href="https://inscricao-cpnu.conhecimento.fgv.br/" target="_blank" class="h-8 px-2 lg:px-3 flex items-center justify-center gap-2 bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-700 hover:bg-indigo-100 transition-colors shadow-sm" title="Área do Candidato">
-                    <i class="fa-solid fa-user-lock"></i> <span class="hidden lg:inline text-xs font-bold">Login</span>
+                <a href="https://inscricao-cpnu.conhecimento.fgv.br/" target="_blank" class="h-9 px-3 flex items-center justify-center gap-2 bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-700 hover:bg-indigo-100 transition-colors shadow-sm group" title="Área do Candidato">
+                    <i class="fa-solid fa-user-lock group-hover:scale-110 transition-transform"></i> <span class="hidden lg:inline text-xs font-bold">Login</span>
                 </a>
 
                 <div class="w-px h-6 bg-slate-200 mx-1 hidden sm:block"></div>
@@ -95,10 +102,12 @@
                     <span id="dbCount">0</span>
                     <span class="hidden sm:inline"> Reg.</span>
                 </div>
-                <button onclick="saveOfflineHTML()" class="h-8 w-8 lg:w-auto lg:px-3 flex items-center justify-center gap-2 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-indigo-600 transition-colors shadow-sm" title="Salvar HTML Completo">
-                    <i class="fa-solid fa-floppy-disk"></i> <span class="hidden lg:inline text-xs font-bold">Salvar</span>
+                
+                <button onclick="saveOfflineHTML()" class="h-9 w-9 lg:w-auto lg:px-3 flex items-center justify-center gap-2 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-indigo-600 transition-colors shadow-sm group" title="Salvar HTML Completo">
+                    <i class="fa-solid fa-floppy-disk group-hover:scale-110 transition-transform"></i> <span class="hidden lg:inline text-xs font-bold">Salvar</span>
                 </button>
-                <button onclick="clearData()" class="h-8 w-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Sair / Resetar">
+                
+                <button onclick="clearData()" class="h-9 w-9 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Sair / Resetar">
                     <i class="fa-solid fa-power-off"></i>
                 </button>
             </div>
