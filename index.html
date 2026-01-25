@@ -26,6 +26,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     
     <!-- Fontes -->
@@ -33,8 +34,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
     <script>
-        // --- MANIFEST DINÂMICO PARA PWA ---
-        // Isso garante que o navegador entenda que é um app instalável mesmo sem arquivo externo
+        // --- CONFIGURAÇÃO DA API GEMINI ---
+        // Se você quiser fornecer a chave para todos os usuários (Serverless seguro):
+        // 1. Crie uma chave no Google AI Studio.
+        // 2. No Google Cloud Console, restrinja a chave por "HTTP Referrer" (Websites).
+        // 3. Adicione o seu domínio (ex: https://vsantosz.github.io/*) na lista de permitidos.
+        // 4. Cole a chave abaixo.
+        const SYSTEM_API_KEY = ""; 
+
+        // --- MANIFEST DINÂMICO ---
         const manifestData = {
             "name": "Painel CNU - Bloco 7",
             "short_name": "CNU B7",
@@ -44,29 +52,24 @@
             "theme_color": "#4f46e5",
             "orientation": "portrait",
             "icons": [
-                {
-                    "src": "https://cdn-icons-png.flaticon.com/512/2910/2910768.png",
-                    "sizes": "192x192",
-                    "type": "image/png"
-                },
-                {
-                    "src": "https://cdn-icons-png.flaticon.com/512/2910/2910768.png",
-                    "sizes": "512x512",
-                    "type": "image/png"
-                }
+                { "src": "https://cdn-icons-png.flaticon.com/512/2910/2910768.png", "sizes": "192x192", "type": "image/png" },
+                { "src": "https://cdn-icons-png.flaticon.com/512/2910/2910768.png", "sizes": "512x512", "type": "image/png" }
             ]
         };
-        const stringManifest = JSON.stringify(manifestData);
-        const blobManifest = new Blob([stringManifest], {type: 'application/json'});
-        const manifestURL = URL.createObjectURL(blobManifest);
-        document.querySelector('#manifest-placeholder').setAttribute('href', manifestURL);
+        const blobManifest = new Blob([JSON.stringify(manifestData)], {type: 'application/json'});
+        
+        // Wait for DOM to append manifest
+        window.addEventListener('load', () => {
+             document.querySelector('#manifest-placeholder')?.setAttribute('href', URL.createObjectURL(blobManifest));
+        });
 
         tailwind.config = {
             darkMode: 'class',
             theme: {
                 extend: {
                     colors: { slate: { 850: '#1e293b', 900: '#0f172a', 950: '#020617' } },
-                    borderRadius: { '4xl': '2rem' }
+                    borderRadius: { '4xl': '2rem' },
+                    animation: { 'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite' }
                 }
             }
         }
@@ -88,11 +91,16 @@
         /* Glassmorphism */
         .glass-panel { background: rgba(255, 255, 255, 0.98); border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border-radius: 16px; }
         .dark .glass-panel { background: rgba(30, 41, 59, 0.95); border: 1px solid #334155; }
-        
         .glass-modal { background: #ffffff; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); }
         .dark .glass-modal { background: #1e293b; border: 1px solid #334155; }
 
-        /* Styles */
+        /* AI Chat */
+        .ai-message { @apply p-3 rounded-lg text-sm max-w-[85%] mb-3 shadow-sm; }
+        .ai-message.user { @apply bg-indigo-100 text-indigo-900 ml-auto rounded-tr-none dark:bg-indigo-900/40 dark:text-indigo-200; }
+        .ai-message.bot { @apply bg-slate-100 text-slate-800 mr-auto rounded-tl-none dark:bg-slate-800 dark:text-slate-200; }
+        .typing-dot { @apply w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce; }
+
+        /* Components */
         .badge { display: inline-flex; align-items: center; justify-content: center; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; border: 1px solid transparent; letter-spacing: 0.02em; }
         .tag-ac { background: #f9fafb; color: #6b7280; border-color: #e5e7eb; } .dark .tag-ac { background: #334155; color: #94a3b8; border-color: #475569; }
         .tag-pn { background: #fff7ed; color: #c2410c; border-color: #fed7aa; } .dark .tag-pn { background: #431407; color: #fdba74; border-color: #9a3412; }
@@ -110,6 +118,8 @@
         
         .layout-container { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         
+        .custom-checkbox { @apply w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600; }
+
         @media (max-width: 1024px) {
             .mobile-scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
             header { height: auto; min-height: 4rem; padding: 0.75rem; flex-wrap: wrap; justify-content: center; }
@@ -126,7 +136,6 @@
     <!-- INTRO SPLASH SCREEN -->
     <div id="introScreen" class="fixed inset-0 z-[100] bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-fade-in overflow-y-auto">
         <div class="max-w-md w-full bg-white dark:bg-slate-900 rounded-3xl shadow-2xl p-8 border border-slate-100 dark:border-slate-800 relative overflow-hidden my-auto">
-            <!-- Decorative BG -->
             <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
             
             <div class="absolute top-4 right-4">
@@ -150,12 +159,12 @@
             </div>
 
             <button onclick="acceptDisclaimer()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-500/30 transition-all transform active:scale-95 flex items-center justify-center gap-2 mb-6">
-                <span>Li e Concordo, Acessar</span> <i class="fa-solid fa-arrow-right"></i>
+                <span>Concordar e Acessar</span> <i class="fa-solid fa-arrow-right"></i>
             </button>
 
             <div class="pt-4 border-t border-slate-100 dark:border-slate-800">
                 <p class="text-[10px] text-slate-400 mb-1">Criado por <strong>Vicenzo Soares dos Santos</strong> em 24/01/2026</p>
-                <p class="text-[10px] text-slate-400">Última atualização: 24/01/2026</p>
+                <p class="text-[10px] text-slate-400">Última atualização: <span id="lastUpdateDate"></span></p>
                 
                 <a href="https://vsantos.adv.br/" target="_blank" class="inline-flex items-center gap-2 mt-3 text-[10px] text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors font-medium border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800">
                     <i class="fa-solid fa-scale-balanced"></i> Apoio Jurídico: vsantos.adv.br
@@ -171,7 +180,6 @@
         <header class="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex-none z-50 flex items-center justify-between px-6 lg:px-8 shadow-sm relative transition-all duration-300">
             
             <div class="flex items-center gap-4 lg:gap-5 overflow-hidden header-title-container py-1">
-                <!-- Ícone Built-in -->
                 <div class="bg-gradient-to-br from-indigo-600 to-indigo-800 text-white p-3 rounded-4xl shadow-xl flex-none transform transition hover:scale-105 hidden lg:block">
                     <i class="fa-solid fa-chart-simple text-lg"></i>
                 </div>
@@ -187,12 +195,20 @@
             
             <div class="flex items-center gap-2 lg:gap-3 header-actions-container">
                 
-                <!-- Install App Button (Auto-Detect) -->
+                <!-- AI Assistant -->
+                <button onclick="toggleAI()" class="h-9 w-9 flex items-center justify-center rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-md hover:shadow-lg hover:scale-105 transition-all animate-pulse-slow" title="IA Insights">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                </button>
+
+                <!-- Comparison Mode Toggle -->
+                <button id="compareModeBtn" onclick="toggleCompareMode()" class="h-9 px-3 hidden lg:flex items-center justify-center gap-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors shadow-sm text-xs font-bold uppercase">
+                    <i class="fa-solid fa-scale-balanced"></i> Comparar
+                </button>
+
                 <button id="installBtn" class="hidden h-9 px-3 items-center justify-center gap-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-bold text-xs uppercase animate-pulse">
                     <i class="fa-solid fa-download"></i> <span class="hidden sm:inline">Instalar</span>
                 </button>
 
-                <!-- Toggle Theme -->
                 <button onclick="toggleDarkMode()" class="h-9 w-9 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-yellow-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shadow-sm" title="Tema">
                     <i class="fa-solid fa-moon dark:hidden"></i>
                     <i class="fa-solid fa-sun hidden dark:block"></i>
@@ -200,22 +216,19 @@
 
                 <div class="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
 
-                <!-- Links Externos -->
-                <a href="https://conhecimento.fgv.br/cpnu2" target="_blank" class="h-9 px-3 flex items-center justify-center gap-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-lg text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors shadow-sm group" title="Edital Oficial">
+                <!-- Links -->
+                <a href="https://conhecimento.fgv.br/cpnu2" target="_blank" class="h-9 px-3 flex items-center justify-center gap-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-lg text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors shadow-sm group" title="Edital">
                     <i class="fa-solid fa-globe group-hover:scale-110 transition-transform"></i> <span class="hidden lg:inline text-xs font-bold">Edital</span>
                 </a>
-                <a href="https://inscricao-cpnu.conhecimento.fgv.br/" target="_blank" class="h-9 px-3 flex items-center justify-center gap-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-lg text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors shadow-sm group" title="Login Candidato">
+                <a href="https://inscricao-cpnu.conhecimento.fgv.br/" target="_blank" class="h-9 px-3 flex items-center justify-center gap-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-lg text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors shadow-sm group" title="Login">
                     <i class="fa-solid fa-user-lock group-hover:scale-110 transition-transform"></i> <span class="hidden lg:inline text-xs font-bold">Login</span>
                 </a>
-
-                <!-- VS Adv (Sutil, ao lado do login) -->
-                <a href="https://vsantos.adv.br/" target="_blank" class="h-9 px-2 flex items-center justify-center gap-1 rounded-lg text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-all group" title="Assessoria Jurídica - VS Advocacia">
+                <a href="https://vsantos.adv.br/" target="_blank" class="h-9 px-2 flex items-center justify-center gap-1 rounded-lg text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-all group" title="VS Advocacia">
                     <i class="fa-solid fa-scale-balanced text-sm group-hover:scale-110 transition-transform"></i>
                 </a>
 
                 <div class="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
 
-                <!-- Share -->
                 <button onclick="shareApp()" class="h-9 w-9 flex items-center justify-center rounded-lg text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors" title="Compartilhar">
                     <i class="fa-brands fa-whatsapp text-lg"></i>
                 </button>
@@ -224,11 +237,11 @@
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> <span id="dbCount">0</span>
                 </div>
                 
-                <button onclick="saveOfflineHTML()" class="h-9 w-9 lg:w-auto lg:px-3 flex items-center justify-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors shadow-sm group" title="Baixar App Offline">
+                <button onclick="saveOfflineHTML()" class="h-9 w-9 lg:w-auto lg:px-3 flex items-center justify-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors shadow-sm group" title="Salvar Offline">
                     <i class="fa-solid fa-floppy-disk group-hover:scale-110 transition-transform"></i> <span class="hidden lg:inline text-xs font-bold">Salvar</span>
                 </button>
                 
-                <button onclick="clearData()" class="h-9 w-9 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Sair / Resetar">
+                <button onclick="clearData()" class="h-9 w-9 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Sair">
                     <i class="fa-solid fa-power-off"></i>
                 </button>
             </div>
@@ -236,6 +249,11 @@
 
         <!-- Main -->
         <main class="flex-1 flex flex-col p-3 lg:p-6 gap-3 lg:gap-4 overflow-hidden relative bg-slate-50/50 dark:bg-slate-950 transition-colors duration-300">
+
+            <!-- Comparison Floating Action Button (Mobile) -->
+            <button id="fabCompare" onclick="executeComparison()" class="fixed bottom-24 right-6 z-50 h-14 w-14 bg-indigo-600 text-white rounded-full shadow-xl flex items-center justify-center transform scale-0 transition-transform duration-300">
+                <i class="fa-solid fa-check-double text-xl"></i>
+            </button>
 
             <!-- Upload -->
             <div id="uploadScreen" class="absolute inset-0 z-50 flex items-center justify-center bg-slate-100/90 dark:bg-slate-900/90 backdrop-blur-sm p-4 transition-all duration-300">
@@ -259,7 +277,7 @@
                     <div id="panelText" class="p-5 hidden flex-col gap-3">
                         <p class="text-xs text-slate-500 dark:text-slate-400 font-medium">Cole o JSON abaixo:</p>
                         <textarea id="jsonTextInput" class="w-full h-48 p-3 text-[10px] font-mono border border-slate-200 dark:border-slate-700 rounded-lg focus:border-indigo-500 outline-none resize-none bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-300"></textarea>
-                        <button onclick="loadFromText()" class="w-full bg-slate-800 dark:bg-indigo-600 hover:bg-slate-900 text-white font-bold py-3.5 rounded-xl text-xs uppercase shadow transition-all flex items-center justify-center gap-2"><i class="fa-solid fa-bolt"></i> Carregar</button>
+                        <button onclick="loadFromText()" class="w-full bg-slate-800 dark:bg-indigo-600 hover:bg-slate-900 dark:hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl text-xs uppercase shadow transition-all flex items-center justify-center gap-2"><i class="fa-solid fa-bolt"></i> Carregar</button>
                     </div>
                 </div>
             </div>
@@ -340,6 +358,8 @@
                                 <table class="w-full text-left border-collapse min-w-[600px] lg:min-w-0">
                                     <thead class="bg-slate-50 dark:bg-slate-800 sticky top-0 z-10 shadow-sm border-b border-slate-200 dark:border-slate-700">
                                         <tr>
+                                            <!-- CHECKBOX FOR COMPARISON -->
+                                            <th class="px-3 py-2.5 w-8 text-center" id="colCompare"><i class="fa-solid fa-check-double text-slate-300 text-[10px]"></i></th>
                                             <th class="px-4 py-2.5 text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase w-12 text-center">Pos</th>
                                             <th class="px-4 py-2.5 text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase w-12 text-center">Geral</th>
                                             <th class="px-4 py-2.5 text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase">Candidato</th>
@@ -362,7 +382,48 @@
         <!-- Back to Top -->
         <button id="backToTopBtn" onclick="scrollToTop()" class="fixed bottom-6 right-6 lg:bottom-10 lg:right-10 z-40 p-3 bg-indigo-600 dark:bg-indigo-500 text-white rounded-full shadow-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-all duration-300 opacity-0 translate-y-10 pointer-events-none"><i class="fa-solid fa-arrow-up"></i></button>
 
-        <!-- MODAL -->
+        <!-- Comparison Modal -->
+        <div id="compareModal" class="fixed inset-0 z-[120] hidden flex items-center justify-center pointer-events-none p-4">
+             <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 pointer-events-auto" onclick="closeCompare()" id="compareOverlay"></div>
+             <div id="compareContent" class="glass-modal w-full max-w-2xl bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-2xl transform scale-95 opacity-0 transition-all duration-300 pointer-events-auto relative">
+                <button onclick="closeCompare()" class="absolute top-4 right-4 p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-400 hover:text-slate-800 z-10"><i class="fa-solid fa-times"></i></button>
+                <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-6 border-b border-slate-100 pb-3">Comparativo Direto</h3>
+                
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div id="comp1" class="text-center p-4 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100"></div>
+                    <div id="comp2" class="text-center p-4 rounded-xl bg-fuchsia-50 dark:bg-fuchsia-900/20 border border-fuchsia-100"></div>
+                </div>
+                
+                <div class="h-48 w-full"><canvas id="compareChart"></canvas></div>
+             </div>
+        </div>
+
+        <!-- AI Chat Modal -->
+        <div id="aiModal" class="fixed inset-0 z-[110] hidden flex items-center justify-center pointer-events-none p-4">
+            <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 pointer-events-auto" onclick="toggleAI()" id="aiOverlay"></div>
+            <div id="aiContent" class="glass-modal w-full max-w-lg bg-white dark:bg-slate-900 p-0 rounded-2xl shadow-2xl transform scale-95 opacity-0 transition-all duration-300 pointer-events-auto flex flex-col h-[600px] max-h-[85vh] relative overflow-hidden">
+                <div class="bg-gradient-to-r from-violet-600 to-fuchsia-600 p-4 flex justify-between items-center text-white">
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-robot"></i><h3 class="font-bold text-sm">Gemini Assistant</h3></div>
+                    <button onclick="toggleAI()" class="hover:bg-white/20 p-1.5 rounded-full"><i class="fa-solid fa-times"></i></button>
+                </div>
+                <div id="aiChatArea" class="flex-1 overflow-y-auto p-4 custom-scroll bg-slate-50 dark:bg-slate-950 flex flex-col">
+                    <div class="ai-message bot shadow-sm border border-slate-200 dark:border-slate-800">Olá! Sou sua IA especialista no CNU Bloco 7. Já analisei os dados carregados. Pergunte algo como: "Qual a nota de corte para PN?" ou "Faça um resumo geral".</div>
+                </div>
+                <div class="p-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+                    <div id="apiKeyConfig" class="hidden mb-3 bg-slate-100 dark:bg-slate-800 p-2 rounded-lg">
+                        <label class="block text-[10px] font-bold text-slate-500 mb-1">API Key (Gemini):</label>
+                        <input type="password" id="apiKeyInput" class="w-full text-xs p-2 rounded border dark:bg-slate-900 dark:border-slate-600">
+                        <button onclick="saveApiKey()" class="mt-2 w-full bg-indigo-600 text-white text-xs py-1.5 rounded">Salvar</button>
+                    </div>
+                    <div class="relative">
+                        <input type="text" id="aiInput" placeholder="Digite sua pergunta..." class="w-full pl-4 pr-12 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 border-none focus:ring-2 focus:ring-violet-500 dark:text-white text-sm shadow-inner" onkeypress="if(event.key === 'Enter') sendToAI()">
+                        <button onclick="sendToAI()" class="absolute right-2 top-2 p-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors shadow-sm"><i class="fa-solid fa-paper-plane text-xs"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL DETAIL -->
         <div id="detailModal" class="fixed inset-0 z-[100] hidden flex items-center justify-center pointer-events-none p-4">
             <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity opacity-0 pointer-events-auto" onclick="closeModal()" id="modalOverlay"></div>
             <div id="modalContent" class="glass-modal w-full max-w-md bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-2xl transform scale-95 opacity-0 transition-all duration-300 pointer-events-auto flex flex-col max-h-[90vh] relative">
@@ -379,7 +440,14 @@
                         <div class="bg-white dark:bg-slate-800 p-3 text-center border-r border-slate-100 dark:border-slate-700"><p class="text-[9px] font-bold text-slate-400 uppercase">Esp.</p><p class="text-sm font-bold text-slate-700 dark:text-slate-300 leading-none mt-1" id="mEsp">--</p></div>
                         <div class="bg-white dark:bg-slate-800 p-3 text-center"><p class="text-[9px] font-bold text-slate-400 uppercase">Disc.</p><p class="text-sm font-bold text-slate-700 dark:text-slate-300 leading-none mt-1" id="mDisc">--</p></div>
                     </div>
-                    <div><h4 class="text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100 dark:border-slate-800 pb-2 mb-3 flex items-center gap-2"><i class="fa-solid fa-list-check"></i> Detalhes</h4><div id="mCotasInfo" class="flex flex-col gap-2"></div></div>
+                    <div>
+                        <h4 class="text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100 dark:border-slate-800 pb-2 mb-3 flex items-center gap-2"><i class="fa-solid fa-list-check"></i> Detalhes</h4>
+                        <div id="mCotasInfo" class="flex flex-col gap-2"></div>
+                    </div>
+                    
+                    <button onclick="shareCandidateResult()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-lg flex items-center justify-center gap-2 text-xs font-bold uppercase transition-all">
+                        <i class="fa-brands fa-whatsapp text-lg"></i> Compartilhar Resultado
+                    </button>
                 </div>
             </div>
         </div>
@@ -72388,10 +72456,200 @@
         const VAGAS_INI = { 'AC': 161, 'PN': 63, 'PCD': 13, 'PI': 8, 'PQ': 5 };
         const PAGE_SIZE = 50;
         let allData = [], calculatedData = [], currentViewList = [], renderedCount = 0;
-        let chartDist = null, chartStatus = null;
+        let chartDist = null, chartStatus = null, compareChart = null;
         let searchTimeout = null;
         let quickFilter = 'ALL'; 
         let deferredPrompt;
+        let userApiKey = localStorage.getItem('gemini_api_key') || "";
+        
+        // --- DATA DE ATUALIZAÇÃO ---
+        document.getElementById('lastUpdateDate').innerText = new Date().toLocaleDateString('pt-BR');
+
+        // --- COMPARE LOGIC ---
+        let compareMode = false;
+        let selectedForCompare = [];
+
+        function toggleCompareMode() {
+            compareMode = !compareMode;
+            selectedForCompare = [];
+            const btn = document.getElementById('compareModeBtn');
+            const fab = document.getElementById('fabCompare');
+            
+            if(compareMode) {
+                btn.classList.add('bg-indigo-100', 'text-indigo-700', 'border-indigo-300');
+                if(fab) fab.classList.remove('scale-0');
+            } else {
+                btn.classList.remove('bg-indigo-100', 'text-indigo-700', 'border-indigo-300');
+                if(fab) fab.classList.add('scale-0');
+            }
+            // Re-render to show checkboxes
+            document.getElementById('tableBody').innerHTML = '';
+            renderedCount = 0;
+            renderBatch();
+        }
+
+        function toggleSelectCandidate(id) {
+            if(selectedForCompare.includes(id)) {
+                selectedForCompare = selectedForCompare.filter(i => i !== id);
+            } else {
+                if(selectedForCompare.length >= 2) selectedForCompare.shift(); // Keep max 2
+                selectedForCompare.push(id);
+            }
+            // Execute if 2
+            if(selectedForCompare.length === 2) {
+                setTimeout(executeComparison, 500);
+            }
+        }
+
+        function executeComparison() {
+            if(selectedForCompare.length < 2) return alert("Selecione 2 candidatos.");
+            const c1 = calculatedData.find(c => c.id === selectedForCompare[0]);
+            const c2 = calculatedData.find(c => c.id === selectedForCompare[1]);
+            
+            // Populate Modal
+            const fillComp = (elId, c) => {
+                document.getElementById(elId).innerHTML = `
+                    <div class="font-bold text-sm truncate">${c.name}</div>
+                    <div class="text-[10px] text-slate-500 mb-2">#${c.pos_geral}</div>
+                    <div class="text-2xl font-black text-indigo-700">${c.total_score.toFixed(2)}</div>
+                `;
+            };
+            fillComp('comp1', c1);
+            fillComp('comp2', c2);
+
+            // Chart
+            const ctx = document.getElementById('compareChart').getContext('2d');
+            if(compareChart) compareChart.destroy();
+            compareChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Específica', 'Discursiva', 'Total'],
+                    datasets: [
+                        { label: c1.name.split(' ')[0], data: [c1.esp_score, c1.disc_score, c1.total_score], backgroundColor: '#6366f1' },
+                        { label: c2.name.split(' ')[0], data: [c2.esp_score, c2.disc_score, c2.total_score], backgroundColor: '#d946ef' }
+                    ]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: false } } }
+            });
+
+            // Show Modal
+            const modal = document.getElementById('compareModal');
+            const overlay = document.getElementById('compareOverlay');
+            const content = document.getElementById('compareContent');
+            modal.classList.remove('hidden', 'pointer-events-none');
+            setTimeout(() => { overlay.style.opacity = '1'; content.classList.remove('scale-95', 'opacity-0'); }, 10);
+        }
+
+        function closeCompare() {
+            const modal = document.getElementById('compareModal');
+            document.getElementById('compareOverlay').style.opacity = '0';
+            document.getElementById('compareContent').classList.add('scale-95', 'opacity-0');
+            setTimeout(() => modal.classList.add('hidden', 'pointer-events-none'), 300);
+        }
+        
+        // Share Single Result
+        function shareCandidateResult() {
+            const name = document.getElementById('mName').innerText;
+            const pos = document.getElementById('mPos').innerText;
+            const total = document.getElementById('mTotal').innerText;
+            const text = `Confira o resultado de ${name} no CNU Bloco 7:\n🏆 Posição: ${pos}\n📊 Nota Final: ${total}\n\nVia Painel CNU: ${window.location.href}`;
+            window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+        }
+
+        // --- GEMINI AI INTEGRATION ---
+        function toggleAI() {
+            const modal = document.getElementById('aiModal');
+            const overlay = document.getElementById('aiOverlay');
+            const content = document.getElementById('aiContent');
+
+            if(modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden', 'pointer-events-none');
+                requestAnimationFrame(() => {
+                    overlay.style.opacity = '1';
+                    content.classList.remove('scale-95', 'opacity-0');
+                    content.classList.add('scale-100', 'opacity-100');
+                });
+                // Logic: Use SYSTEM_API_KEY if present, else check user key
+                if(!userApiKey && !SYSTEM_API_KEY) {
+                    document.getElementById('apiKeyConfig').classList.remove('hidden');
+                } else {
+                    document.getElementById('apiKeyConfig').classList.add('hidden');
+                }
+            } else {
+                overlay.style.opacity = '0';
+                content.classList.remove('scale-100', 'opacity-100');
+                content.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => modal.classList.add('hidden', 'pointer-events-none'), 300);
+            }
+        }
+
+        function saveApiKey() {
+            const val = document.getElementById('apiKeyInput').value.trim();
+            if(val) {
+                userApiKey = val;
+                localStorage.setItem('gemini_api_key', val);
+                document.getElementById('apiKeyConfig').classList.add('hidden');
+                addAiMessage("bot", "Chave API salva! Agora você pode me fazer perguntas sobre os dados.");
+            }
+        }
+
+        function addAiMessage(role, text) {
+            const area = document.getElementById('aiChatArea');
+            const div = document.createElement('div');
+            div.className = `ai-message ${role} shadow-sm border border-slate-200 dark:border-slate-800`;
+            div.innerHTML = marked.parse(text);
+            area.appendChild(div);
+            area.scrollTop = area.scrollHeight;
+        }
+
+        async function sendToAI() {
+            const input = document.getElementById('aiInput');
+            const question = input.value.trim();
+            if(!question) return;
+
+            const keyToUse = SYSTEM_API_KEY || userApiKey;
+            if(!keyToUse) {
+                addAiMessage("bot", "⚠️ Por favor, insira sua Google API Key nas configurações acima para usar a IA.");
+                document.getElementById('apiKeyConfig').classList.remove('hidden');
+                return;
+            }
+
+            // UI Updates
+            addAiMessage("user", question);
+            input.value = '';
+            
+            // Loading
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = "ai-message bot flex items-center gap-2";
+            loadingDiv.innerHTML = '<div class="typing-dot"></div><div class="typing-dot" style="animation-delay: 0.1s"></div><div class="typing-dot" style="animation-delay: 0.2s"></div>';
+            loadingDiv.id = "aiLoading";
+            document.getElementById('aiChatArea').appendChild(loadingDiv);
+
+            // Context
+            const stats = {
+                total: allData.length,
+                filtered: currentViewList.length,
+                cutVaga: document.getElementById('kpiCutVaga').innerText
+            };
+            const top5 = currentViewList.slice(0, 5).map(c => `${c.pos_geral}. ${c.name} (${c.total_score})`).join('\n');
+
+            const prompt = `Contexto: Painel CNU Bloco 7. Total: ${stats.total}. Filtro: ${document.getElementById('viewFilter').value}. Corte Vaga: ${stats.cutVaga}. Top 5: \n${top5}\nPergunta: "${question}"`;
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${keyToUse}`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                const data = await response.json();
+                document.getElementById('aiLoading').remove();
+                if(data.error) addAiMessage("bot", `Erro: ${data.error.message}`);
+                else addAiMessage("bot", data.candidates?.[0]?.content?.parts?.[0]?.text || "Sem resposta.");
+            } catch(e) {
+                document.getElementById('aiLoading').remove();
+                addAiMessage("bot", "Erro de conexão.");
+            }
+        }
+
 
         // --- INTRO SCREEN ---
         function acceptDisclaimer() {
@@ -72818,9 +73076,28 @@
 
                 let tr = document.createElement('tr');
                 tr.className = "hover-row border-b border-slate-50 dark:border-slate-800 transition-all fade-in bg-white dark:bg-slate-900";
-                tr.onclick = () => openModal(c, pos, pillClass);
                 
+                // Add Checkbox logic
+                const isSelected = selectedForCompare.includes(c.id);
+                const bgSelected = isSelected ? 'bg-indigo-50 dark:bg-indigo-900/40' : '';
+                tr.className += ` ${bgSelected}`;
+
+                tr.onclick = (e) => {
+                    if(compareMode) {
+                        toggleSelectCandidate(c.id);
+                        e.stopPropagation();
+                    } else {
+                        openModal(c, pos, pillClass);
+                    }
+                };
+                
+                let checkHtml = '';
+                if(compareMode) {
+                     checkHtml = `<td class="px-3 py-2.5 text-center"><input type="checkbox" class="custom-checkbox" ${isSelected ? 'checked' : ''}></td>`;
+                }
+
                 tr.innerHTML = `
+                    ${checkHtml}
                     <td class="px-4 py-2.5 text-center font-bold text-slate-400 dark:text-slate-500 text-[10px] bg-slate-50/50 dark:bg-slate-800/50">${pos}</td>
                     <td class="px-4 py-2.5 text-center text-[10px] text-slate-400 dark:text-slate-500 font-mono">#${c.pos_geral}</td>
                     <td class="px-4 py-2.5">
