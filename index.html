@@ -72456,7 +72456,7 @@
         let quickFilter = 'ALL'; 
         let deferredPrompt;
         let userApiKey = localStorage.getItem('gemini_api_key') || "";
-        const apiKey = ""; // Environment key placeholder
+        const apiKey = "SYSTEM_API_KEY"; // Environment key placeholder
 
         // --- DATA DE ATUALIZAÇÃO ---
         document.getElementById('lastUpdateDate').innerText = new Date().toLocaleDateString('pt-BR');
@@ -73315,3 +73315,4 @@
     </script>
 </body>
 </html>
+
