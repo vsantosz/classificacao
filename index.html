@@ -114,7 +114,7 @@
         
         .custom-checkbox { @apply w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600; }
 
-        /* Mobile specific styles */
+        /* Responsive Visibility */
         @media (max-width: 1024px) {
             .mobile-scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
             header { height: auto; min-height: 4rem; padding: 0.75rem; flex-wrap: wrap; justify-content: space-between; }
@@ -126,11 +126,11 @@
             .header-hamburger { display: none !important; }
             .header-actions-desktop { display: flex !important; }
         }
-        
-        /* Floating Buttons */
+
+        /* Floating Scroll Buttons */
         .scroll-btn-group {
             position: fixed;
-            bottom: 5.5rem; /* Acima do FAB Compare se existir, ou no canto */
+            bottom: 5.5rem;
             right: 1.5rem;
             z-index: 40;
             display: flex;
@@ -208,7 +208,7 @@
                 </div>
             </div>
             
-            <!-- Mobile Hamburger -->
+            <!-- Mobile Hamburger Button -->
             <div class="header-hamburger items-center gap-3">
                 <button onclick="toggleAI()" class="h-9 w-9 flex items-center justify-center rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-md hover:shadow-lg transition-all animate-pulse-slow">
                     <i class="fa-solid fa-wand-magic-sparkles"></i>
@@ -220,7 +220,6 @@
 
             <!-- Desktop Actions -->
             <div class="header-actions-desktop items-center gap-2 lg:gap-3">
-                
                 <!-- AI Assistant -->
                 <button onclick="toggleAI()" class="h-9 w-9 flex items-center justify-center rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-md hover:shadow-lg hover:scale-105 transition-all animate-pulse-slow" title="IA Insights">
                     <i class="fa-solid fa-wand-magic-sparkles"></i>
@@ -273,7 +272,7 @@
             </div>
         </header>
 
-        <!-- Mobile Menu Dropdown -->
+         <!-- Mobile Menu Dropdown -->
         <div id="mobileMenu" class="hidden fixed top-16 left-0 w-full bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-40 flex-col p-4 shadow-xl animate-fade-in lg:hidden">
             <div class="grid grid-cols-2 gap-3 mb-4">
                 <a href="https://conhecimento.fgv.br/cpnu2" target="_blank" class="h-10 flex items-center justify-center gap-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-lg text-indigo-700 dark:text-indigo-300 font-bold text-xs"><i class="fa-solid fa-globe"></i> Edital</a>
@@ -72523,6 +72522,9 @@
         let deferredPrompt;
         let userApiKey = localStorage.getItem('gemini_api_key') || "";
         const apiKey = SYSTEM_API_KEY; 
+        
+        // --- NEW GLOBAL FOR MODAL ---
+        let currentModalCandidate = null;
 
         // --- DATA DE ATUALIZAÇÃO ---
         document.getElementById('lastUpdateDate').innerText = new Date().toLocaleDateString('pt-BR');
@@ -72650,11 +72652,15 @@
             setTimeout(() => modal.classList.add('hidden', 'pointer-events-none'), 300);
         }
         
+        // --- SHARE FIX: Uses exact data from object ---
         function shareCandidateResult() {
-            const name = document.getElementById('mName').innerText;
-            const pos = document.getElementById('mPos').innerText;
-            const total = document.getElementById('mTotal').innerText;
-            const text = `Confira o resultado de ${name} no CNU Bloco 7:\n🏆 Posição: ${pos}\n📊 Nota Final: ${total}\n\nVia Painel CNU: ${window.location.href}`;
+            if (!currentModalCandidate) return;
+            const c = currentModalCandidate;
+            const name = c.name;
+            const pos = `#${c.pos_geral}`; // ALWAYS GLOBAL RANK
+            const total = c.total_score.toFixed(2);
+            
+            const text = `Confira o resultado de ${name} no CNU Bloco 7:\n🏆 Posição Geral: ${pos}\n📊 Nota Final: ${total}\n\nVia Painel CNU: ${window.location.href}`;
             window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
         }
 
@@ -73237,6 +73243,8 @@
 
         // --- MODAL ---
         function openModal(c, pos, pillClass) {
+            currentModalCandidate = c; // SAVE FOR SHARE
+            
             document.getElementById('mName').innerText = c.name;
             document.getElementById('mPos').innerText = `#${pos}`;
             document.getElementById('mId').innerText = c.id;
@@ -73423,7 +73431,7 @@
             const rows = currentViewList.map((c, i) => [
                 i + 1,              // Pos
                 c.pos_geral,        // Geral
-                c.id,               // Inscrição
+                c.id,               // Inscrição (NOVO)
                 c.name,             // Nome
                 c.cotas.filter(x=>x!='AC').join(', ') || '-', // Cotas
                 c.computedStatus.label, // Situação
