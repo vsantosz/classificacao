@@ -35,7 +35,7 @@
 
     <script>
         // --- CONFIGURAÇÃO GERAL ---
-        const SYSTEM_API_KEY = "AIzaSyB3-Ejl-N27DPueARZmaXrUVFgw8hCbXnQ"; 
+        const SYSTEM_API_KEY = ""; 
 
         // --- MANIFEST DINÂMICO ---
         const manifestData = {
@@ -143,10 +143,12 @@
             @apply p-2 bg-white/90 dark:bg-slate-800/90 text-slate-500 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-full shadow-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/50 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all h-10 w-10 flex items-center justify-center backdrop-blur-sm;
         }
 
-        .star-fav { color: #cbd5e1; transition: color 0.2s; cursor: pointer; }
-        .star-fav.active { color: #eab308; }
-        .dark .star-fav { color: #475569; }
-        .dark .star-fav.active { color: #fbbf24; }
+        .star-fav { transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); cursor: pointer; }
+        .star-fav:hover { transform: scale(1.2); }
+        .star-fav:active { transform: scale(0.9); }
+        .star-fav.active { color: #eab308 !important; } /* Yellow-500 */
+        .star-fav.inactive { color: #cbd5e1; } /* Slate-300 */
+        .dark .star-fav.inactive { color: #475569; } /* Slate-600 */
 
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
@@ -577,8 +579,7 @@
         </div>
     </div>
 
-    <!-- JSON DATA -->
-    <!-- COLE O JSON DENTRO DO COLCHETE ABAIXO E NÃO APAGUE A TAG </script> -->
+    <!-- JSON DATA: COLE O JSON DENTRO DO COLCHETE ABAIXO (MANTENHA NO FINAL DO ARQUIVO) -->
     <script id="json-data" type="application/json">
         [
   {
@@ -72577,9 +72578,10 @@
 ]
     </script>
 
-    <!-- LOGIC SCRIPT (Carregado ANTES do bloco de dados para evitar erros de parser) -->
+    <!-- LOGIC SCRIPT -->
     <script>
-        ; // SAFETY SEMICOLON
+        // SAFETY SEMICOLON
+        ;
         
         // --- VARIAVEIS GLOBAIS ---
         var CONFIG_VAGAS = { 'AC': 161, 'PN': 63, 'PCD': 13, 'PI': 8, 'PQ': 5 };
@@ -72673,9 +72675,19 @@
             else favorites.push(id);
             localStorage.setItem('cnu_favs', JSON.stringify(favorites));
             
-            // Re-render only if needed, otherwise just toggle class visually
+            // INSTANT FEEDBACK FIX
             var star = document.getElementById('star-' + id);
-            if(star) star.classList.toggle('active');
+            if(star) {
+                if (star.classList.contains('fa-regular')) {
+                    star.classList.remove('fa-regular');
+                    star.classList.add('fa-solid');
+                    star.classList.add('active');
+                } else {
+                    star.classList.remove('fa-solid');
+                    star.classList.remove('active');
+                    star.classList.add('fa-regular');
+                }
+            }
             
             if(document.getElementById('viewFilter').value === 'FAV') {
                 updateView(); // Refresh list if viewing favorites
@@ -72890,6 +72902,7 @@
         };
 
         window.clearData = function() { localStorage.removeItem('cnu_v16_data'); location.reload(); };
+        
         window.closeModal = function() {
             var modal = document.getElementById('detailModal');
             var content = document.getElementById('modalContent');
@@ -73434,7 +73447,8 @@
                 if(errorMsgs.length > 0) errorHtml = '<div class="mt-0.5 text-[9px] text-red-500 dark:text-red-400 font-medium"><i class="fa-solid fa-circle-exclamation mr-1"></i>Negado: ' + errorMsgs.join(', ') + '</div>';
 
                 var isFav = favorites.includes(c.id);
-                var starIcon = isFav ? '<i class="fa-solid fa-star star-fav active mr-1" onclick="toggleFavorite(\'' + c.id + '\', event)"></i>' : '<i class="fa-regular fa-star star-fav mr-1" onclick="toggleFavorite(\'' + c.id + '\', event)"></i>';
+                var starClass = isFav ? "fa-solid active" : "fa-regular";
+                var starIcon = '<i id="star-' + c.id + '" class="' + starClass + ' fa-star star-fav mr-1" onclick="toggleFavorite(\'' + c.id + '\', event)"></i>';
 
                 var tr = document.createElement('tr');
                 tr.className = "hover-row border-b border-slate-50 dark:border-slate-800 transition-all fade-in bg-white dark:bg-slate-900";
@@ -73468,6 +73482,90 @@
             document.getElementById('loadedCount').innerText = Math.min(renderedCount, list.length) + '/' + list.length;
             spinner.classList.add('hidden');
         }
+
+        // --- GAP ANALYSIS (CALLED INSIDE OPEN MODAL) ---
+        function calculateGap(candidate) {
+            // Determine primary quota
+            var mainQuota = candidate.cotas.length > 1 ? candidate.cotas.filter(function(x){return x!=='AC'})[0] : 'AC';
+            
+            // Find cutoff scores for current quota list
+            var list = calculatedData.filter(function(c){ return c.cotas.includes(mainQuota); });
+            var lastVaga = [].concat(list).reverse().find(function(c) { return c.computedStatus.label.includes('VAGA'); });
+            var lastCR = [].concat(list).reverse().find(function(c) { return c.computedStatus.label.includes('CR'); });
+            
+            var vagaCutoff = lastVaga ? lastVaga.total_score : 0;
+            var crCutoff = lastCR ? lastCR.total_score : 0;
+
+            var gapEl = document.getElementById('gapAnalysis');
+            var gapText = document.getElementById('gapText');
+            var stLabel = candidate.computedStatus.label;
+            
+            // LOGIC FIX: USE ACTUAL STATUS
+            if(stLabel.includes('VAGA')) {
+                 gapEl.classList.remove('hidden');
+                 gapText.innerText = "Parabéns! Você está dentro das vagas imediatas.";
+                 gapText.className = "text-xs font-bold text-emerald-600 dark:text-emerald-400";
+            } else if (stLabel.includes('CR')) {
+                 var diff = (vagaCutoff - candidate.total_score).toFixed(2);
+                 gapEl.classList.remove('hidden');
+                 gapText.innerText = "Você está no Cadastro Reserva. Faltam " + diff + " pontos para a vaga direta.";
+                 gapText.className = "text-xs font-bold text-sky-600 dark:text-sky-400";
+            } else {
+                 var diff = (crCutoff - candidate.total_score).toFixed(2);
+                 gapEl.classList.remove('hidden');
+                 gapText.innerText = "Faltam " + diff + " pontos para entrar no Cadastro Reserva.";
+                 gapText.className = "text-xs font-bold text-slate-500 dark:text-slate-400";
+            }
+        }
+        
+        // --- MODAL ---
+        window.openModal = function(c, pos, pillClass) {
+            currentModalCandidate = c; // SAVE FOR SHARE
+            
+            document.getElementById('mName').innerText = c.name;
+            document.getElementById('mPos').innerText = '#' + c.pos_geral; // Use Global
+            document.getElementById('mId').innerText = c.id;
+            document.getElementById('mTotal').innerText = c.total_score.toFixed(2);
+            document.getElementById('mEsp').innerText = c.esp_score.toFixed(2);
+            document.getElementById('mDisc').innerText = c.disc_score.toFixed(2);
+            
+            document.getElementById('mStatusBadge').innerHTML = `<span class="pill ${pillClass} text-sm px-4 py-1">${c.computedStatus.label}</span>`;
+
+            // Calc Gap
+            calculateGap(c);
+
+            var cotasContainer = document.getElementById('mCotasInfo');
+            cotasContainer.innerHTML = '';
+            
+            var hasDetails = false;
+            var addDetail = function(label, text, colorClass) {
+                if(text && text !== '-') {
+                    cotasContainer.innerHTML += 
+                        '<div class="text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 p-2 rounded border-l-4 ' + colorClass + '">' +
+                            '<strong class="uppercase text-[10px] opacity-70">' + label + '</strong><br/>' + text +
+                        '</div>';
+                    hasDetails = true;
+                }
+            };
+
+            addDetail('Pessoa Negra', c.res_pn_text, 'border-orange-400');
+            addDetail('PCD', c.res_pcd_text, 'border-blue-400');
+            addDetail('Indígena', c.res_pi_text, 'border-emerald-400');
+            addDetail('Quilombola', c.res_pq_text, 'border-purple-400');
+            
+            if(!hasDetails) cotasContainer.innerHTML = '<span class="text-xs text-slate-400 italic block text-center py-2">Nenhuma observação de cota registrada.</span>';
+
+            var modal = document.getElementById('detailModal');
+            var content = document.getElementById('modalContent');
+            var overlay = document.getElementById('modalOverlay');
+            
+            modal.classList.remove('hidden', 'pointer-events-none');
+            requestAnimationFrame(function() {
+                overlay.style.opacity = '1';
+                content.classList.remove('scale-95', 'opacity-0');
+                content.classList.add('scale-100', 'opacity-100');
+            });
+        };
 
         function setupIntersectionObserver() {
             var options = { root: document.getElementById('tableContainer'), rootMargin: '200px', threshold: 0.1 };
@@ -73504,107 +73602,6 @@
                 reader.onload = function(evt) { processJSON(evt.target.result); };
                 reader.readAsText(file);
             });
-        }
-
-        // --- GAP ANALYSIS (CALLED INSIDE OPEN MODAL) ---
-        function calculateGap(candidate) {
-            // Find lowest score for VAGA and CR in candidates quota list
-            // Determine primary quota
-            var mainQuota = candidate.cotas.length > 1 ? candidate.cotas.filter(function(x){return x!=='AC'})[0] : 'AC';
-            
-            // Find cutoff scores
-            var vagaCutoff = 0;
-            var crCutoff = 0;
-            
-            // We need to iterate processed data to find the last person
-            var list = calculatedData.filter(function(c){ return c.cotas.includes(mainQuota); });
-            var lastVaga = [].concat(list).reverse().find(function(c) { return c.computedStatus.label.includes('VAGA'); });
-            var lastCR = [].concat(list).reverse().find(function(c) { return c.computedStatus.label.includes('CR'); });
-            
-            if(lastVaga) vagaCutoff = lastVaga.total_score;
-            if(lastCR) crCutoff = lastCR.total_score;
-
-            var gapEl = document.getElementById('gapAnalysis');
-            var gapText = document.getElementById('gapText');
-            
-            if(candidate.total_score >= vagaCutoff) {
-                 gapEl.classList.remove('hidden');
-                 gapText.innerText = "Parabéns! Você está dentro das vagas imediatas.";
-                 gapText.className = "text-xs font-bold text-emerald-600 dark:text-emerald-400";
-            } else if (candidate.total_score >= crCutoff) {
-                 var diff = (vagaCutoff - candidate.total_score).toFixed(2);
-                 gapEl.classList.remove('hidden');
-                 gapText.innerText = "Você está no Cadastro Reserva. Faltam " + diff + " pontos para a vaga direta.";
-                 gapText.className = "text-xs font-bold text-sky-600 dark:text-sky-400";
-            } else {
-                 var diff = (crCutoff - candidate.total_score).toFixed(2);
-                 gapEl.classList.remove('hidden');
-                 gapText.innerText = "Faltam " + diff + " pontos para entrar no Cadastro Reserva.";
-                 gapText.className = "text-xs font-bold text-slate-500 dark:text-slate-400";
-            }
-        }
-        
-        // --- MODAL ---
-        function openModal(c, pos, pillClass) {
-            currentModalCandidate = c; // SAVE FOR SHARE
-            
-            document.getElementById('mName').innerText = c.name;
-            document.getElementById('mPos').innerText = '#' + c.pos_geral; // Use Global
-            document.getElementById('mId').innerText = c.id;
-            document.getElementById('mTotal').innerText = c.total_score.toFixed(2);
-            document.getElementById('mEsp').innerText = c.esp_score.toFixed(2);
-            document.getElementById('mDisc').innerText = c.disc_score.toFixed(2);
-            
-            document.getElementById('mStatusBadge').innerHTML = '<span class="pill ' + pillClass + ' text-sm px-4 py-1">' + c.computedStatus.label + '</span>';
-
-            // Calc Gap
-            calculateGap(c);
-
-            var cotasContainer = document.getElementById('mCotasInfo');
-            cotasContainer.innerHTML = '';
-            
-            var hasDetails = false;
-            var addDetail = function(label, text, colorClass) {
-                if(text && text !== '-') {
-                    cotasContainer.innerHTML += 
-                        '<div class="text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 p-2 rounded border-l-4 ' + colorClass + '">' +
-                            '<strong class="uppercase text-[10px] opacity-70">' + label + '</strong><br/>' + text +
-                        '</div>';
-                    hasDetails = true;
-                }
-            };
-
-            addDetail('Pessoa Negra', c.res_pn_text, 'border-orange-400');
-            addDetail('PCD', c.res_pcd_text, 'border-blue-400');
-            addDetail('Indígena', c.res_pi_text, 'border-emerald-400');
-            addDetail('Quilombola', c.res_pq_text, 'border-purple-400');
-            
-            if(!hasDetails) cotasContainer.innerHTML = '<span class="text-xs text-slate-400 italic block text-center py-2">Nenhuma observação de cota registrada.</span>';
-
-            var modal = document.getElementById('detailModal');
-            var content = document.getElementById('modalContent');
-            var overlay = document.getElementById('modalOverlay');
-            
-            modal.classList.remove('hidden', 'pointer-events-none');
-            requestAnimationFrame(function() {
-                overlay.style.opacity = '1';
-                content.classList.remove('scale-95', 'opacity-0');
-                content.classList.add('scale-100', 'opacity-100');
-            });
-        }
-
-        function closeModal() {
-            var modal = document.getElementById('detailModal');
-            var content = document.getElementById('modalContent');
-            var overlay = document.getElementById('modalOverlay');
-
-            overlay.style.opacity = '0';
-            content.classList.remove('scale-100', 'opacity-100');
-            content.classList.add('scale-95', 'opacity-0');
-            
-            setTimeout(function() {
-                modal.classList.add('hidden', 'pointer-events-none');
-            }, 300);
         }
 
         // AUTO-INIT IF DATA EXISTS IN STORAGE
