@@ -27,7 +27,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <!-- Adicionando html2canvas para geração de imagens -->
+    <!-- HTML2Canvas para gerar imagem -->
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     
@@ -157,7 +157,7 @@
         .star-fav.inactive { color: #cbd5e1; } /* Slate-300 */
         .dark .star-fav.inactive { color: #475569; } /* Slate-600 */
         
-        .sortable-header { cursor: pointer; user-select: none; transition: color 0.2s; }
+        .sortable-header { cursor: pointer; user-select: none; transition: color 0.2s; white-space: nowrap; }
         .sortable-header:hover { color: #4f46e5; }
         .dark .sortable-header:hover { color: #818cf8; }
 
@@ -604,7 +604,7 @@
                     </div>
                     
                     <!-- RADAR CHART -->
-                    <div class="relative h-48 w-full">
+                    <div class="relative h-64 w-full"> <!-- Increased Height -->
                         <canvas id="radarChart"></canvas>
                     </div>
 
@@ -655,1179 +655,7 @@
         </div>
     </div>
 
-    <!-- JSON DATA -->
-    <script id="json-data" type="application/json">
-        [ ]
-    </script>
-
-    <!-- LOGIC SCRIPT -->
-    <script>
-        ; 
-        
-        // --- VARIAVEIS GLOBAIS ---
-        var CONFIG_VAGAS = { 'AC': 161, 'PN': 63, 'PCD': 13, 'PI': 8, 'PQ': 5 };
-        var CONFIG_PAGE_SIZE = 50;
-        var allData = [];
-        var calculatedData = [];
-        var currentViewList = [];
-        var renderedCount = 0;
-        var chartDist = null;
-        var chartStatus = null;
-        var compareChart = null;
-        var radarChart = null;
-        var searchTimeout = null;
-        var quickFilter = 'ALL'; 
-        var userApiKey = localStorage.getItem('gemini_api_key') || "";
-        var appGeminiKey = SYSTEM_API_KEY;
-        var selectedForCompare = [];
-        var compareMode = false;
-        var currentModalCandidate = null;
-        var favorites = JSON.parse(localStorage.getItem('cnu_favs') || '[]');
-        var excludedIds = JSON.parse(localStorage.getItem('cnu_excluded') || '[]');
-        var currentSort = { key: 'total_score', order: 'desc' }; 
-
-        // --- GLOBAL EXPORTS ---
-        window.acceptDisclaimer = function() {
-            document.getElementById('introScreen').style.opacity = '0';
-            setTimeout(function() {
-                document.getElementById('introScreen').style.display = 'none';
-                document.getElementById('mainLayout').style.opacity = '1';
-                checkDataAvailability();
-            }, 500);
-        };
-
-        window.toggleMobileMenu = function() {
-            var menu = document.getElementById('mobileMenu');
-            if (menu.classList.contains('hidden')) {
-                menu.classList.remove('hidden');
-                menu.classList.add('flex');
-            } else {
-                menu.classList.add('hidden');
-                menu.classList.remove('flex');
-            }
-        };
-
-        // --- SIMULATOR & SETTINGS ---
-        window.toggleSettings = function() {
-             var modal = document.getElementById('settingsModal');
-             var overlay = document.getElementById('settingsOverlay');
-             var content = document.getElementById('settingsContent');
-             
-             if(modal.classList.contains('hidden')) {
-                 document.getElementById('set_ac').value = CONFIG_VAGAS.AC;
-                 document.getElementById('set_pn').value = CONFIG_VAGAS.PN;
-                 document.getElementById('set_pcd').value = CONFIG_VAGAS.PCD;
-                 document.getElementById('set_pi').value = CONFIG_VAGAS.PI;
-                 document.getElementById('set_pq').value = CONFIG_VAGAS.PQ;
-                 
-                 modal.classList.remove('hidden', 'pointer-events-none');
-                 requestAnimationFrame(function(){
-                    overlay.style.opacity = '1';
-                    content.classList.remove('scale-95', 'opacity-0');
-                 });
-             } else {
-                 overlay.style.opacity = '0';
-                 content.classList.add('scale-95', 'opacity-0');
-                 setTimeout(function(){ modal.classList.add('hidden', 'pointer-events-none'); }, 300);
-             }
-        };
-
-        window.applySettings = function() {
-            var rate = parseInt(document.getElementById('abstentionRange').value) || 0;
-            var multiplier = 1 + (rate / 100); 
-
-            CONFIG_VAGAS.AC = Math.ceil((parseInt(document.getElementById('set_ac').value) || 161) * multiplier);
-            CONFIG_VAGAS.PN = Math.ceil((parseInt(document.getElementById('set_pn').value) || 63) * multiplier);
-            CONFIG_VAGAS.PCD = Math.ceil((parseInt(document.getElementById('set_pcd').value) || 13) * multiplier);
-            CONFIG_VAGAS.PI = Math.ceil((parseInt(document.getElementById('set_pi').value) || 8) * multiplier);
-            CONFIG_VAGAS.PQ = Math.ceil((parseInt(document.getElementById('set_pq').value) || 5) * multiplier);
-
-            document.getElementById('vagasInput').value = CONFIG_VAGAS.AC;
-            
-            window.toggleSettings(); 
-            processCascading();
-            updateView();
-            alert("Simulação aplicada com taxa de abstenção de " + rate + "%!");
-        };
-
-        // --- EXCLUSION / GOD MODE ---
-        window.toggleExclusion = function() {
-            if(!currentModalCandidate) return;
-            var id = currentModalCandidate.id;
-            var idx = excludedIds.indexOf(id);
-            
-            if(idx > -1) {
-                excludedIds.splice(idx, 1);
-                alert("Candidato reativado.");
-            } else {
-                excludedIds.push(id);
-                alert("Candidato marcado como desistente.");
-            }
-            localStorage.setItem('cnu_excluded', JSON.stringify(excludedIds));
-            processCascading();
-            updateView();
-            window.closeModal();
-        };
-
-        // --- SNIPER MODE ---
-        window.triggerSniperMode = function() {
-            if(!currentModalCandidate) return;
-            var idx = currentViewList.findIndex(c => c.id === currentModalCandidate.id);
-            if(idx === -1) return;
-            
-            var start = Math.max(0, idx - 5);
-            var end = Math.min(currentViewList.length, idx + 6);
-            
-            // Temporary override view list
-            var snippet = currentViewList.slice(start, end);
-            
-            // Re-render only snippet
-            document.getElementById('tableBody').innerHTML = '';
-            // Hack: manually render without breaking pagination
-            var fragment = document.createDocumentFragment();
-            snippet.forEach(function(c, i) {
-                // Logic mostly duplicated from renderBatch for snippet
-                 // ... simplified render ...
-            });
-            // Better approach: filter by IDs
-            var ids = snippet.map(c => c.id);
-            // We use quick filter logic to hack it or just alert for now as requested simple implementation
-            alert("Modo Vizinhos Ativado! Filtrando apenas candidatos próximos.");
-            document.getElementById('searchInput').value = ""; 
-            // Filter global list to just these IDs
-            currentViewList = calculatedData.filter(c => ids.includes(c.id));
-            renderedCount = 0;
-            document.getElementById('tableBody').innerHTML = '';
-            renderBatch();
-            window.closeModal();
-        };
-
-        // --- SORTING ---
-        window.sortData = function(key) {
-            if (currentSort.key === key) {
-                currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
-            } else {
-                currentSort.key = key;
-                currentSort.order = 'desc'; 
-            }
-            
-            currentViewList.sort(function(a, b) {
-                var valA = a[key];
-                var valB = b[key];
-                if (typeof valA === 'string') {
-                    valA = valA.toLowerCase(); 
-                    valB = valB.toLowerCase();
-                }
-                if (valA < valB) return currentSort.order === 'asc' ? -1 : 1;
-                if (valA > valB) return currentSort.order === 'asc' ? 1 : -1;
-                return 0;
-            });
-            
-            renderedCount = 0;
-            document.getElementById('tableBody').innerHTML = '';
-            renderBatch();
-        };
-
-        // --- FAVORITES ---
-        window.toggleFavorite = function(id, event) {
-            if(event) event.stopPropagation();
-            var idx = favorites.indexOf(id);
-            if(idx > -1) favorites.splice(idx, 1);
-            else favorites.push(id);
-            localStorage.setItem('cnu_favs', JSON.stringify(favorites));
-            
-            var star = document.getElementById('star-' + id);
-            if(star) {
-                if (star.classList.contains('fa-regular')) {
-                    star.classList.remove('fa-regular');
-                    star.classList.add('fa-solid', 'active');
-                } else {
-                    star.classList.remove('fa-solid', 'active');
-                    star.classList.add('fa-regular');
-                }
-            }
-            if(document.getElementById('viewFilter').value === 'FAV') updateView();
-        };
-
-        // --- VISUAL SHARE ---
-        window.generateShareImage = function() {
-             if(!currentModalCandidate) return;
-             var c = currentModalCandidate;
-             
-             document.getElementById('scName').innerText = c.name;
-             document.getElementById('scPos').innerText = '#' + c.pos_geral;
-             document.getElementById('scTotal').innerText = c.total_score.toFixed(2);
-             document.getElementById('scStatus').innerText = c.computedStatus.label;
-             
-             var node = document.getElementById('shareCardContainer');
-             
-             html2canvas(node).then(function(canvas) {
-                 var link = document.createElement('a');
-                 link.download = 'Resultado_' + c.name.split(' ')[0] + '.png';
-                 link.href = canvas.toDataURL();
-                 link.click();
-             });
-        };
-
-        window.toggleDarkMode = function() {
-            var html = document.documentElement;
-            if(html.classList.contains('dark')) {
-                html.classList.remove('dark');
-                localStorage.setItem('theme', 'light');
-            } else {
-                html.classList.add('dark');
-                localStorage.setItem('theme', 'dark');
-            }
-            updateCharts();
-        };
-
-        window.setQuickFilter = function(type) {
-            quickFilter = type;
-            ['ALL', 'VAGA', 'CR'].forEach(function(k) {
-                var btn = document.getElementById('qf-' + k);
-                if(k === type) btn.className = "px-3 py-1.5 rounded text-[10px] font-bold uppercase transition-all bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm transform scale-105";
-                else btn.className = "px-3 py-1.5 rounded text-[10px] font-bold uppercase text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-all";
-            });
-            renderedCount = 0;
-            document.getElementById('tableBody').innerHTML = '';
-            renderBatch();
-        };
-
-        window.toggleCompareMode = function() {
-            compareMode = !compareMode;
-            selectedForCompare = [];
-            var btn = document.getElementById('compareModeBtn');
-            var fab = document.getElementById('fabCompare');
-            var th = document.getElementById('colCompare');
-            
-            if(compareMode) {
-                btn.classList.add('bg-indigo-100', 'text-indigo-700', 'border-indigo-300');
-                if(fab) fab.classList.remove('scale-0');
-                th.classList.remove('hidden');
-            } else {
-                btn.classList.remove('bg-indigo-100', 'text-indigo-700', 'border-indigo-300');
-                if(fab) fab.classList.add('scale-0');
-                th.classList.add('hidden');
-            }
-            document.getElementById('tableBody').innerHTML = '';
-            renderedCount = 0;
-            renderBatch();
-        };
-
-        window.executeComparison = function() {
-            if(selectedForCompare.length < 2) return alert("Selecione 2 candidatos.");
-            var c1 = calculatedData.find(function(c) { return c.id === selectedForCompare[0]; });
-            var c2 = calculatedData.find(function(c) { return c.id === selectedForCompare[1]; });
-            
-            var fillComp = function(elId, c) {
-                document.getElementById(elId).innerHTML = 
-                    '<div class="font-bold text-sm truncate">' + c.name + '</div>' +
-                    '<div class="text-[10px] text-slate-500 mb-2">#' + c.pos_geral + '</div>' +
-                    '<div class="text-2xl font-black text-indigo-700">' + c.total_score.toFixed(2) + '</div>';
-            };
-            fillComp('comp1', c1);
-            fillComp('comp2', c2);
-
-            var ctx = document.getElementById('compareChart').getContext('2d');
-            if(compareChart) compareChart.destroy();
-            compareChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: ['Específica', 'Discursiva', 'Total'],
-                    datasets: [
-                        { label: c1.name.split(' ')[0], data: [c1.esp_score, c1.disc_score, c1.total_score], backgroundColor: '#6366f1' },
-                        { label: c2.name.split(' ')[0], data: [c2.esp_score, c2.disc_score, c2.total_score], backgroundColor: '#d946ef' }
-                    ]
-                },
-                options: { responsive: true, scales: { y: { beginAtZero: false } } }
-            });
-
-            var modal = document.getElementById('compareModal');
-            var overlay = document.getElementById('compareOverlay');
-            var content = document.getElementById('compareContent');
-            modal.classList.remove('hidden', 'pointer-events-none');
-            setTimeout(function() { overlay.style.opacity = '1'; content.classList.remove('scale-95', 'opacity-0'); }, 10);
-        };
-
-        window.closeCompare = function() {
-            var modal = document.getElementById('compareModal');
-            document.getElementById('compareOverlay').style.opacity = '0';
-            document.getElementById('compareContent').classList.add('scale-95', 'opacity-0');
-            setTimeout(function() { modal.classList.add('hidden', 'pointer-events-none'); }, 300);
-        };
-
-        window.toggleAI = function() {
-            var modal = document.getElementById('aiModal');
-            var overlay = document.getElementById('aiOverlay');
-            var content = document.getElementById('aiContent');
-
-            if(modal.classList.contains('hidden')) {
-                modal.classList.remove('hidden', 'pointer-events-none');
-                requestAnimationFrame(function() {
-                    overlay.style.opacity = '1';
-                    content.classList.remove('scale-95', 'opacity-0');
-                    content.classList.add('scale-100', 'opacity-100');
-                });
-                if(!userApiKey && !appGeminiKey) {
-                    document.getElementById('apiKeyConfig').classList.remove('hidden');
-                }
-            } else {
-                overlay.style.opacity = '0';
-                content.classList.remove('scale-100', 'opacity-100');
-                content.classList.add('scale-95', 'opacity-0');
-                setTimeout(function() { modal.classList.add('hidden', 'pointer-events-none'); }, 300);
-            }
-        };
-
-        window.saveApiKey = function() {
-            var val = document.getElementById('apiKeyInput').value.trim();
-            if(val) {
-                userApiKey = val;
-                localStorage.setItem('gemini_api_key', val);
-                document.getElementById('apiKeyConfig').classList.add('hidden');
-                addAiMessage("bot", "Chave API salva! Agora você pode me fazer perguntas sobre os dados.");
-            }
-        };
-
-        window.sendToAI = async function() {
-            var input = document.getElementById('aiInput');
-            var question = input.value.trim();
-            if(!question) return;
-
-            var keyToUse = userApiKey || appGeminiKey;
-            if(!keyToUse) {
-                addAiMessage("bot", "⚠️ Por favor, insira sua Google API Key nas configurações acima para usar a IA.");
-                document.getElementById('apiKeyConfig').classList.remove('hidden');
-                return;
-            }
-
-            addAiMessage("user", question);
-            input.value = '';
-            
-            var loadingDiv = document.createElement('div');
-            loadingDiv.className = "ai-message bot flex items-center gap-2";
-            loadingDiv.innerHTML = '<div class="typing-dot"></div><div class="typing-dot" style="animation-delay: 0.1s"></div><div class="typing-dot" style="animation-delay: 0.2s"></div>';
-            loadingDiv.id = "aiLoading";
-            document.getElementById('aiChatArea').appendChild(loadingDiv);
-
-            var stats = {
-                total: allData.length,
-                filtered: currentViewList.length,
-                cutVaga: document.getElementById('kpiCutVaga').innerText
-            };
-            var top5 = currentViewList.slice(0, 5).map(function(c) { 
-                return c.pos_geral + '. ' + c.name + ' (' + c.total_score + ') - ' + c.computedStatus.label; 
-            }).join('\n');
-
-            var prompt = 
-                'Contexto: Painel de Classificação CNU Bloco 7 (Justiça e Defesa).\n' +
-                'Dados Atuais:\n' +
-                '- Total Candidatos Carregados: ' + stats.total + '\n' +
-                '- Visualização Atual: ' + document.getElementById('viewFilter').value + '\n' +
-                '- Nota Corte (Geral/AC estimativa): ' + document.getElementById('kpiCutVaga').innerText + '\n' +
-                '- Top 5 da lista atual:\n' + top5 + '\n' +
-                'Pergunta do usuário: "' + question + '"\n' +
-                'Responda de forma concisa, analítica e em Português do Brasil. Use formatação Markdown.';
-
-            try {
-                var response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=' + keyToUse, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-                });
-
-                var data = await response.json();
-                document.getElementById('aiLoading').remove();
-                
-                if(data.error) {
-                    addAiMessage("bot", '❌ Erro na API: ' + data.error.message);
-                } else {
-                    var text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Não consegui gerar uma resposta.";
-                    addAiMessage("bot", text);
-                }
-            } catch(e) {
-                document.getElementById('aiLoading').remove();
-                addAiMessage("bot", "❌ Erro de conexão. Verifique sua internet.");
-            }
-        };
-
-        window.shareApp = function() {
-            var shareData = {
-                title: 'Painel CNU - Bloco 7',
-                text: 'Confira a classificação detalhada do CNU Bloco 7 - Justiça e Defesa.',
-                url: window.location.href,
-            };
-            if (navigator.share) navigator.share(shareData).catch(console.error);
-            else {
-                var url = 'https://api.whatsapp.com/send?text=' + encodeURIComponent(shareData.text + ' ' + shareData.url);
-                window.open(url, '_blank');
-            }
-        };
-
-        window.saveOfflineHTML = function() {
-            if(allData.length === 0) return alert("Carregue dados primeiro.");
-            var htmlContent = document.documentElement.outerHTML;
-            var dataString = JSON.stringify(allData);
-            var scriptTag = '<script id="json-data" type="application/json">' + dataString + '<\/script>'; 
-            htmlContent = htmlContent.replace(/<script id="json-data" type="application\/json">([\s\S]*?)<\/script>/, scriptTag);
-            var blob = new Blob([htmlContent], {type: 'text/html'});
-            var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'Painel_CNU_All_In_One.html'; a.click();
-        };
-
-        window.clearData = function() { localStorage.removeItem('cnu_v16_data'); location.reload(); };
-        
-        window.closeModal = function() {
-            var modal = document.getElementById('detailModal');
-            var content = document.getElementById('modalContent');
-            var overlay = document.getElementById('modalOverlay');
-
-            overlay.style.opacity = '0';
-            content.classList.remove('scale-100', 'opacity-100');
-            content.classList.add('scale-95', 'opacity-0');
-            
-            setTimeout(function() {
-                modal.classList.add('hidden', 'pointer-events-none');
-            }, 300);
-        };
-        
-        window.shareCandidateResult = function() {
-            if(!currentModalCandidate) return;
-            var c = currentModalCandidate;
-            var name = c.name;
-            var pos = '#' + c.pos_geral; // Use Global Position always
-            var total = c.total_score.toFixed(2);
-            var text = 'Confira o resultado de ' + name + ' no CNU Bloco 7:\n🏆 Posição Geral: ' + pos + '\n📊 Nota Final: ' + total + '\n\nVia Painel CNU: ' + window.location.href;
-            window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(text), '_blank');
-        };
-
-        window.exportCSV = function() {
-            var headers = ['Pos', 'Geral', 'Nome', 'Inscricao', 'Nota Final', 'Especifica', 'Discursiva', 'Cotas', 'Situacao'];
-            var rows = currentViewList.map(function(c, i) {
-                return [
-                    i + 1,
-                    c.pos_geral,
-                    '"' + c.name + '"',
-                    c.id,
-                    c.total_score.toFixed(2).replace('.',','),
-                    c.esp_score.toFixed(2).replace('.',','),
-                    c.disc_score.toFixed(2).replace('.',','),
-                    '"' + c.cotas.join(', ') + '"',
-                    '"' + c.computedStatus.label + '"'
-                ].join(';');
-            });
-            
-            var csvContent = "data:text/csv;charset=utf-8," + headers.join(";") + "\n" + rows.join("\n");
-            var encodedUri = encodeURI(csvContent);
-            var link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", 'CNU_Bloco7_Export.csv');
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        };
-
-        window.exportPDF = function() {
-            var jsPDF = window.jspdf.jsPDF;
-            var doc = new jsPDF();
-            
-            // 1. Cabeçalho Minimalista
-            doc.setFillColor(79, 70, 229);
-            doc.rect(0, 0, 210, 35, 'F'); 
-
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(18);
-            doc.setFont("helvetica", "bold");
-            doc.text("Painel CNU - Bloco 7", 14, 18);
-
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "normal");
-            doc.text("Justiça e Defesa - Classificação Extraoficial", 14, 26);
-
-            var filterName = document.getElementById('viewFilter').options[document.getElementById('viewFilter').selectedIndex].text;
-            var dateStr = new Date().toLocaleDateString('pt-BR');
-            doc.setFontSize(9);
-            doc.text('Lista: ' + filterName, 196, 18, { align: 'right' });
-            doc.text('Gerado em: ' + dateStr, 196, 26, { align: 'right' });
-
-            var rows = currentViewList.map(function(c, i) {
-                return [
-                    i + 1,
-                    c.pos_geral,
-                    c.id,
-                    c.name,
-                    c.cotas.filter(function(x){ return x!='AC'; }).join(', ') || '-',
-                    c.computedStatus.label,
-                    c.total_score.toFixed(2)
-                ];
-            });
-
-            doc.autoTable({
-                head: [['#', 'Geral', 'Inscrição', 'Nome', 'Cotas', 'Situação', 'Nota']],
-                body: rows,
-                startY: 40,
-                theme: 'grid',
-                styles: { fontSize: 7, cellPadding: 3, font: "helvetica", lineColor: [229, 231, 235], lineWidth: 0.1 },
-                headStyles: { fillColor: [255, 255, 255], textColor: [79, 70, 229], fontStyle: 'bold', lineWidth: 0.1, lineColor: [229, 231, 235] },
-                columnStyles: {
-                    0: { cellWidth: 10, halign: 'center', fontStyle: 'bold' },
-                    1: { cellWidth: 12, halign: 'center' },
-                    2: { cellWidth: 28, halign: 'center', font: 'courier' },
-                    3: { cellWidth: 'auto' },
-                    4: { cellWidth: 20 },
-                    5: { cellWidth: 30, halign: 'center', fontStyle: 'bold' },
-                    6: { cellWidth: 15, halign: 'right', fontStyle: 'bold', textColor: [67, 56, 202] }
-                },
-                alternateRowStyles: { fillColor: [249, 250, 251] },
-                didParseCell: function(data) {
-                    if (data.section === 'body' && data.column.index === 5) {
-                        var text = data.cell.raw;
-                        if (text.includes('VAGA')) data.cell.styles.textColor = [22, 163, 74];
-                        else if (text.includes('CR')) data.cell.styles.textColor = [2, 132, 199];
-                        else { data.cell.styles.textColor = [156, 163, 175]; data.cell.styles.fontStyle = 'normal'; }
-                    }
-                },
-                didDrawPage: function (data) {
-                    var pageCount = doc.internal.getNumberOfPages();
-                    doc.setFontSize(8);
-                    doc.setTextColor(150);
-                    doc.text('Página ' + pageCount, data.settings.margin.left, doc.internal.pageSize.height - 10);
-                    doc.text('Painel CNU', 196, doc.internal.pageSize.height - 10, { align: 'right' });
-                }
-            });
-
-            doc.save('CNU_' + filterName.replace(/\s+/g, '_') + '.pdf');
-        };
-
-        window.loadFromText = function() {
-            var txt = document.getElementById('jsonTextInput').value;
-            if(!txt.trim()) return alert("Cole o JSON.");
-            processJSON(txt);
-        };
-
-        window.switchTab = function(tab) {
-            var btnFile = document.getElementById('tabFile');
-            var btnText = document.getElementById('tabText');
-            var activeClass = "flex-1 py-4 text-xs font-bold uppercase tracking-wide text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/30 dark:bg-indigo-900/20";
-            var inactiveClass = "flex-1 py-4 text-xs font-bold uppercase tracking-wide text-slate-400 hover:text-indigo-600 transition-colors";
-
-            btnFile.className = tab === 'file' ? activeClass : inactiveClass;
-            btnText.className = tab === 'text' ? activeClass : inactiveClass;
-            document.getElementById('panelFile').classList.toggle('hidden', tab !== 'file');
-            document.getElementById('panelFile').classList.toggle('flex', tab === 'file');
-            document.getElementById('panelText').classList.toggle('hidden', tab !== 'text');
-            document.getElementById('panelText').classList.toggle('flex', tab === 'text');
-        };
-
-        window.toggleSidebar = function() {
-            var sidebar = document.getElementById('sidebarContainer');
-            var btn = document.getElementById('btnToggleCharts');
-            if(sidebar.classList.contains('hidden')) {
-                sidebar.classList.remove('hidden'); sidebar.classList.add('flex');
-                btn.classList.add('bg-indigo-100', 'text-indigo-600', 'border-indigo-200'); btn.classList.remove('bg-white', 'text-slate-600', 'border-slate-200');
-            } else {
-                sidebar.classList.add('hidden'); sidebar.classList.remove('flex');
-                btn.classList.remove('bg-indigo-100', 'text-indigo-600', 'border-indigo-200'); btn.classList.add('bg-white', 'text-slate-600', 'border-slate-200');
-            }
-        };
-
-        window.clearSearch = function() {
-            document.getElementById('searchInput').value = '';
-            toggleClearBtn();
-            handleSearchInput();
-            document.getElementById('searchInput').focus();
-        };
-
-        window.handleSearchInput = function() {
-            toggleClearBtn();
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(function() {
-                document.getElementById('tableBody').innerHTML = '';
-                renderedCount = 0;
-                renderBatch();
-            }, 150);
-        };
-
-        window.scrollToTop = function() { document.getElementById('tableContainer').scrollTo({ top: 0, behavior: 'smooth' }); };
-        window.scrollToBottom = function() { 
-            var container = document.getElementById('tableContainer');
-            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' }); 
-        };
-
-        window.initApp = function() {
-            document.getElementById('uploadScreen').classList.add('hidden');
-            document.getElementById('dashboardScreen').classList.remove('hidden');
-            document.getElementById('dashboardScreen').classList.add('flex');
-            document.getElementById('statusBadge').classList.remove('hidden');
-            document.getElementById('statusBadge').classList.add('flex');
-            document.getElementById('dbCount').innerText = allData.length;
-            
-            allData.sort(function(a,b) {
-                if (b.total_score !== a.total_score) return b.total_score - a.total_score;
-                if ((b.esp_score||0) !== (a.esp_score||0)) return (b.esp_score||0) - (a.esp_score||0);
-                if ((b.disc_score||0) !== (a.disc_score||0)) return (b.disc_score||0) - (a.disc_score||0);
-                return (b.geral_score||0) - (a.geral_score||0);
-            });
-
-            processCascading();
-            setupIntersectionObserver();
-            updateView();
-        };
-
-        window.updateView = function() {
-            var filter = document.getElementById('viewFilter').value;
-            var inputVagas = document.getElementById('vagasInput');
-            
-            if(CONFIG_VAGAS[filter]) inputVagas.value = CONFIG_VAGAS[filter];
-            else if(filter === 'Geral') inputVagas.value = 250;
-
-            document.getElementById('tableHeader').innerText = filter === 'Geral' ? 'Classificação' : 'Lista: ' + filter;
-
-            if (filter === 'Geral') currentViewList = [].concat(calculatedData);
-            else if (filter === 'FAV') currentViewList = calculatedData.filter(function(c) { return favorites.includes(c.id); });
-            else currentViewList = calculatedData.filter(function(c) { return c.cotas.includes(filter); });
-            
-            updateKPIs(filter);
-            updateCharts();
-            
-            document.getElementById('tableBody').innerHTML = '';
-            renderedCount = 0;
-            renderBatch();
-        };
-
-        window.updateVagasManual = function() {
-            var val = parseInt(document.getElementById('vagasInput').value) || 0;
-            CONFIG_VAGAS.AC = val;
-            processCascading();
-            updateView();
-        };
-
-        var lastUpdateEl = document.getElementById('lastUpdateDate');
-        if(lastUpdateEl) lastUpdateEl.innerText = new Date().toLocaleDateString('pt-BR');
-
-        function toggleSelectCandidate(id) {
-            if(selectedForCompare.includes(id)) {
-                selectedForCompare = selectedForCompare.filter(function(i) { return i !== id; });
-            } else {
-                if(selectedForCompare.length >= 2) {
-                    var removedId = selectedForCompare.shift();
-                    updateRowVisuals(removedId, false);
-                }
-                selectedForCompare.push(id);
-            }
-            var isSelected = selectedForCompare.includes(id);
-            updateRowVisuals(id, isSelected);
-            if(selectedForCompare.length === 2) setTimeout(executeComparison, 500);
-        }
-
-        function updateRowVisuals(id, isSelected) {
-            var row = document.getElementById('tr-' + id);
-            if(!row) return;
-            if(isSelected) {
-                row.classList.add('bg-indigo-50', 'dark:bg-indigo-900/40');
-            } else {
-                row.classList.remove('bg-indigo-50', 'dark:bg-indigo-900/40');
-            }
-            var checkbox = row.querySelector('.custom-checkbox');
-            if(checkbox) checkbox.checked = isSelected;
-        }
-
-        function addAiMessage(role, text) {
-            var area = document.getElementById('aiChatArea');
-            var div = document.createElement('div');
-            div.className = 'ai-message ' + role + ' shadow-sm border border-slate-200 dark:border-slate-800';
-            div.innerHTML = marked.parse(text);
-            area.appendChild(div);
-            area.scrollTop = area.scrollHeight;
-        }
-
-        function toggleClearBtn() {
-            var val = document.getElementById('searchInput').value;
-            var btn = document.getElementById('clearSearchBtn');
-            if(val.length > 0) btn.classList.remove('hidden');
-            else btn.classList.add('hidden');
-        }
-
-        function checkDataAvailability() {
-            var foundData = false;
-            try {
-                var embedded = document.getElementById('json-data').textContent.trim();
-                if(embedded && embedded.length > 50 && embedded.startsWith('[')) {
-                    processJSON(embedded);
-                    foundData = true;
-                }
-            } catch(e) {}
-
-            if (!foundData) {
-                try {
-                    var cached = localStorage.getItem('cnu_v16_data');
-                    if(cached) {
-                        var parsed = JSON.parse(cached);
-                        if(Array.isArray(parsed) && parsed.length > 0) {
-                            allData = parsed;
-                            initApp();
-                            foundData = true;
-                        }
-                    } 
-                } catch(e) {}
-            }
-
-            if(!foundData) document.getElementById('uploadScreen').classList.remove('hidden');
-        }
-
-        function processJSON(jsonString) {
-            try {
-                var clean = jsonString.replace(/<!--[\s\S]*?-->/g, "").trim();
-                var json = JSON.parse(clean);
-                if(!Array.isArray(json)) throw new Error("Inválido");
-                allData = json;
-                try { localStorage.setItem('cnu_v16_data', JSON.stringify(allData)); } catch(e){}
-                initApp();
-            } catch(err) { 
-                alert("JSON Inválido. Verifique se copiou corretamente."); 
-                document.getElementById('loadingUpload').classList.add('hidden');
-            }
-        }
-
-        function processCascading() {
-            var filled = { 'AC': 0, 'PN': 0, 'PCD': 0, 'PI': 0, 'PQ': 0 };
-            var limitAC = CONFIG_VAGAS.AC; 
-            
-            calculatedData = allData.map(function(c) {
-                // If excluded, mark as ignored
-                if(excludedIds.includes(c.id)) {
-                    return Object.assign({}, c, { 
-                        computedStatus: { type: 'st-ignore', label: 'IGNORADO' }, 
-                        isVaga: false 
-                    });
-                }
-                
-                var status = { type: 'st-elim', label: 'ELIMINADO' };
-                var isVaga = false;
-
-                if (filled.AC < limitAC) {
-                    status = { type: 'st-vaga', label: 'VAGA AC' };
-                    filled.AC++;
-                    isVaga = true;
-                } else {
-                    for (var i = 0; i < ['PN', 'PCD', 'PI', 'PQ'].length; i++) {
-                        var q = ['PN', 'PCD', 'PI', 'PQ'][i];
-                        if (c.cotas.includes(q) && filled[q] < CONFIG_VAGAS[q]) {
-                            if (c.status_map && c.status_map[q] === 'CONFIRMED') {
-                                status = { type: 'st-vaga', label: 'VAGA ' + q };
-                                filled[q]++;
-                                isVaga = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                return Object.assign({}, c, { computedStatus: status, isVaga: isVaga });
-            });
-
-            var filledCR = { 'AC': 0, 'PN': 0, 'PCD': 0, 'PI': 0, 'PQ': 0 };
-            var limitCR_AC = limitAC * 2;
-
-            calculatedData.forEach(function(c) {
-                if (c.isVaga || excludedIds.includes(c.id)) return;
-                var isCR = false;
-                if (filledCR.AC < limitCR_AC) {
-                     c.computedStatus = { type: 'st-cr', label: 'CR AC' };
-                     filledCR.AC++;
-                     isCR = true;
-                }
-                if (!isCR) {
-                    for (var i = 0; i < ['PN', 'PCD', 'PI', 'PQ'].length; i++) {
-                        var q = ['PN', 'PCD', 'PI', 'PQ'][i];
-                        if (c.cotas.includes(q)) {
-                             if (c.status_map && c.status_map[q] === 'CONFIRMED') {
-                                if (filledCR[q] < (CONFIG_VAGAS[q] * 2)) {
-                                    c.computedStatus = { type: 'st-cr', label: 'CR ' + q };
-                                    filledCR[q]++;
-                                    break;
-                                }
-                             }
-                        }
-                    }
-                }
-            });
-        }
-
-        function updateKPIs(filter) {
-            var total = currentViewList.length;
-            document.getElementById('kpiListTotal').innerText = total;
-            
-            var counts = {};
-            currentViewList.forEach(function(c) {
-                c.cotas.forEach(function(cot) {
-                    if(cot!=='AC') counts[cot] = (counts[cot]||0)+1;
-                });
-            });
-            var counterHtml = Object.entries(counts).map(function(e) { return e[0] + ':' + e[1]; }).join(' | ');
-            document.getElementById('cotasCounter').innerText = counterHtml;
-
-            if(total===0) return;
-            document.getElementById('kpiMax').innerText = currentViewList[0].total_score.toFixed(2);
-
-            var targetVaga = filter === 'Geral' ? 'VAGA' : 'VAGA ' + filter;
-            var targetCR = filter === 'Geral' ? 'CR' : 'CR ' + filter;
-            if(filter === 'AC') { targetVaga='VAGA AC'; targetCR='CR AC'; }
-
-            var lastVagaCandidate = [].concat(currentViewList).reverse().find(function(c) { return c.computedStatus.label.includes(targetVaga); });
-            var lastCRCandidate = [].concat(currentViewList).reverse().find(function(c) { return c.computedStatus.label.includes(targetCR); });
-
-            if(!lastVagaCandidate && filter !== 'Geral') lastVagaCandidate = [].concat(currentViewList).reverse().find(function(c) { return c.computedStatus.label.includes('VAGA'); });
-
-            var setKPI = function(idVal, idPos, cand) {
-                document.getElementById(idVal).innerText = cand ? cand.total_score.toFixed(2) : "-";
-                document.getElementById(idPos).innerText = cand ? '#' + (currentViewList.indexOf(cand)+1) : "-";
-            };
-
-            setKPI('kpiCutVaga', 'posCutVaga', lastVagaCandidate);
-            setKPI('kpiCutCR', 'posCutCR', lastCRCandidate);
-        }
-
-        function updateCharts() {
-            var isDark = document.documentElement.classList.contains('dark');
-            var textColor = isDark ? '#94a3b8' : '#64748b';
-            var ctxStatus = document.getElementById('statusChart').getContext('2d');
-            var ctxScore = document.getElementById('scoreChart').getContext('2d');
-
-            var counts = { VAGA: 0, CR: 0, ELIM: 0 };
-            var scores = [];
-            currentViewList.forEach(function(c) {
-                if(c.computedStatus.label.includes('VAGA')) counts.VAGA++;
-                else if(c.computedStatus.label.includes('CR')) counts.CR++;
-                else counts.ELIM++;
-                scores.push(c.total_score);
-            });
-
-            if(chartStatus) chartStatus.destroy();
-            chartStatus = new Chart(ctxStatus, {
-                type: 'doughnut',
-                data: {
-                    labels: ['Vaga', 'CR', 'Outros'],
-                    datasets: [{ 
-                        data: [counts.VAGA, counts.CR, counts.ELIM], 
-                        backgroundColor: ['#10b981', '#0ea5e9', isDark ? '#334155' : '#f1f5f9'], 
-                        borderWidth: 0,
-                        hoverOffset: 4
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { position: 'right', labels: { boxWidth: 8, font: {size: 9}, color: textColor } } } }
-            });
-
-            var minScore = Math.floor(Math.min.apply(null, scores));
-            var maxScore = Math.ceil(Math.max.apply(null, scores));
-            var step = 2;
-            var labels = [];
-            var dataBins = [];
-            for(var i = minScore; i < maxScore; i+=step) {
-                labels.push(i + '-' + (i+step));
-                dataBins.push(scores.filter(function(s) { return s >= i && s < i+step; }).length);
-            }
-
-            if(chartDist) chartDist.destroy();
-            chartDist = new Chart(ctxScore, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{ label: 'Candidatos', data: dataBins, backgroundColor: '#6366f1', borderRadius: 2 }]
-                },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { font: {size: 8}, color: textColor } }, y: { display: false } } }
-            });
-        }
-
-        function renderBatch() {
-            var tbody = document.getElementById('tableBody');
-            var search = document.getElementById('searchInput').value.toLowerCase();
-            var spinner = document.getElementById('spinnerIcon');
-            var sentinel = document.getElementById('scrollSentinel');
-
-            var list = currentViewList.filter(function(c) {
-                var matchSearch = !search || c.name.toLowerCase().includes(search) || c.id.includes(search);
-                if(!matchSearch) return false;
-                if(quickFilter === 'ALL') return true;
-                if(quickFilter === 'VAGA') return c.computedStatus.label.includes('VAGA');
-                if(quickFilter === 'CR') return c.computedStatus.label.includes('CR');
-                return false;
-            });
-
-            if (list.length === 0) {
-                document.getElementById('emptyState').classList.remove('hidden');
-                sentinel.style.display = 'none';
-                return;
-            } else {
-                document.getElementById('emptyState').classList.add('hidden');
-                sentinel.style.display = 'flex';
-            }
-
-            if (renderedCount >= list.length) { 
-                sentinel.style.display = 'none'; 
-                return; 
-            }
-            spinner.classList.remove('hidden');
-
-            var chunk = list.slice(renderedCount, renderedCount + CONFIG_PAGE_SIZE);
-            var fragment = document.createDocumentFragment();
-
-            chunk.forEach(function(c, i) {
-                var pos = renderedCount + i + 1;
-                var badgesInfo = '';
-                if(c.cotas.length === 1 && c.cotas[0] === 'AC') {
-                     badgesInfo = '<span class="badge tag-ac">AC</span>';
-                } else {
-                    c.cotas.forEach(function(q) {
-                        if(q === 'AC') return;
-                        var st = c.status_map ? c.status_map[q] : 'NONE';
-                        var colorClass = 'tag-' + q.toLowerCase();
-                        var styleExtra = '';
-                        var icon = '';
-                        if (st === 'DENIED') { colorClass = 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800'; styleExtra = 'opacity: 0.7; text-decoration: line-through;'; icon = '<i class="fa-solid fa-xmark ml-1"></i>'; } 
-                        else if (st === 'ABSENT') { colorClass = 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'; styleExtra = 'opacity: 0.7;'; icon = ' (Aus)'; } 
-                        else if (st === 'CONFIRMED') { icon = '<i class="fa-solid fa-check ml-1 text-emerald-600 dark:text-emerald-400"></i>'; }
-                        badgesInfo += '<span class="badge ' + colorClass + ' mr-1 mb-1" style="' + styleExtra + '" title="Status: ' + st + '">' + q + icon + '</span>';
-                    });
-                }
-
-                var st = c.computedStatus;
-                var pillClass = 'st-elim';
-                if (st.label.includes('VAGA')) pillClass = 'st-vaga'; 
-                else if (st.label.includes('CR')) pillClass = 'st-cr';
-                else if (st.type === 'st-ignore') pillClass = 'st-ignore';
-
-                var errorHtml = '';
-                var errorMsgs = [];
-                var checkErr = function(txt, type) { if(txt && (txt.toLowerCase().includes('não') || txt.toLowerCase().includes('ausente'))) errorMsgs.push(type); };
-                checkErr(c.res_pn_text, 'PN'); checkErr(c.res_pcd_text, 'PCD'); checkErr(c.res_pi_text, 'PI'); checkErr(c.res_pq_text, 'PQ');
-                if(errorMsgs.length > 0) errorHtml = '<div class="mt-0.5 text-[9px] text-red-500 dark:text-red-400 font-medium"><i class="fa-solid fa-circle-exclamation mr-1"></i>Negado: ' + errorMsgs.join(', ') + '</div>';
-
-                var isFav = favorites.includes(c.id);
-                var starClass = isFav ? "fa-solid active" : "fa-regular";
-                var starIcon = '<i id="star-' + c.id + '" class="' + starClass + ' fa-star star-fav mr-1" onclick="toggleFavorite(\'' + c.id + '\', event)"></i>';
-
-                var tr = document.createElement('tr');
-                tr.className = "hover-row border-b border-slate-50 dark:border-slate-800 transition-all fade-in bg-white dark:bg-slate-900";
-                tr.id = 'tr-' + c.id;
-                var isSelected = selectedForCompare.includes(c.id);
-                var bgSelected = isSelected ? 'bg-indigo-50 dark:bg-indigo-900/40' : '';
-                tr.className += ' ' + bgSelected;
-                
-                // Dim row if excluded
-                if(excludedIds.includes(c.id)) tr.style.opacity = '0.5';
-
-                tr.onclick = function(e) {
-                    if(compareMode) { toggleSelectCandidate(c.id); e.stopPropagation(); } 
-                    else { openModal(c, pos, pillClass); }
-                };
-                
-                var checkHtml = '';
-                if(compareMode) checkHtml = '<td class="px-3 py-2.5 text-center"><input type="checkbox" class="custom-checkbox" ' + (isSelected ? 'checked' : '') + '></td>';
-
-                tr.innerHTML = checkHtml +
-                    '<td class="px-4 py-2.5 text-center font-bold text-slate-400 dark:text-slate-500 text-[10px] bg-slate-50/50 dark:bg-slate-800/50">' + pos + '</td>' +
-                    '<td class="px-4 py-2.5 text-center text-[10px] text-slate-400 dark:text-slate-500 font-mono">#' + c.pos_geral + '</td>' +
-                    '<td class="px-4 py-2.5"><div class="flex items-center">' + starIcon + '<div class="font-bold text-slate-700 dark:text-slate-200 text-xs truncate max-w-[150px] lg:max-w-none">' + c.name + '</div></div><div class="mt-0.5 flex flex-wrap gap-1">' + badgesInfo + '</div>' + errorHtml + '</td>' +
-                    '<td class="px-4 py-2.5 text-center"><span class="pill ' + pillClass + '">' + st.label + '</span></td>' +
-                    '<td class="px-4 py-2.5 text-right font-mono text-[10px] text-slate-400 dark:text-slate-500">' + c.esp_score.toFixed(1) + '</td>' +
-                    '<td class="px-4 py-2.5 text-right font-mono text-[10px] text-slate-400 dark:text-slate-500">' + c.disc_score.toFixed(1) + '</td>' +
-                    '<td class="px-4 py-2.5 text-right font-extrabold font-mono text-xs text-indigo-700 dark:text-indigo-400">' + c.total_score.toFixed(2) + '</td>';
-                
-                fragment.appendChild(tr);
-            });
-
-            tbody.appendChild(fragment);
-            renderedCount += chunk.length;
-            document.getElementById('loadedCount').innerText = Math.min(renderedCount, list.length) + '/' + list.length;
-            spinner.classList.add('hidden');
-        }
-
-        // --- GAP ANALYSIS & RADAR ---
-        function calculateGap(candidate) {
-            var mainQuota = candidate.cotas.length > 1 ? candidate.cotas.filter(function(x){return x!=='AC'})[0] : 'AC';
-            var list = calculatedData.filter(function(c){ return c.cotas.includes(mainQuota) && !excludedIds.includes(c.id); });
-            var lastVaga = [].concat(list).reverse().find(function(c) { return c.computedStatus.label.includes('VAGA'); });
-            var lastCR = [].concat(list).reverse().find(function(c) { return c.computedStatus.label.includes('CR'); });
-            
-            var vagaCutoff = lastVaga ? lastVaga.total_score : 0;
-            var crCutoff = lastCR ? lastCR.total_score : 0;
-
-            var gapEl = document.getElementById('gapAnalysis');
-            var gapText = document.getElementById('gapText');
-            var stLabel = candidate.computedStatus.label;
-            
-            if(stLabel.includes('VAGA')) {
-                 gapEl.classList.remove('hidden');
-                 gapText.innerText = "Parabéns! Você está classificado dentro das vagas imediatas.";
-                 gapText.className = "text-xs font-bold text-emerald-600 dark:text-emerald-400";
-            } else if (stLabel.includes('CR')) {
-                 var diff = (vagaCutoff - candidate.total_score).toFixed(2);
-                 gapEl.classList.remove('hidden');
-                 gapText.innerText = "Você está no Cadastro Reserva. Aguarde convocações.";
-                 gapText.className = "text-xs font-bold text-sky-600 dark:text-sky-400";
-            } else {
-                 var diff = (crCutoff - candidate.total_score).toFixed(2);
-                 gapEl.classList.remove('hidden');
-                 gapText.innerText = "Faltam " + diff + " pontos para entrar no Cadastro Reserva.";
-                 gapText.className = "text-xs font-bold text-slate-500 dark:text-slate-400";
-            }
-        }
-
-        function calculatePercentile(candidate) {
-             var totalCandidates = allData.length;
-             var betterThan = allData.filter(function(c) { return c.total_score < candidate.total_score; }).length;
-             var percentile = Math.floor((betterThan / totalCandidates) * 100);
-             document.getElementById('mPercentil').innerText = 'Melhor que ' + percentile + '%';
-        }
-
-        function renderRadarChart(c) {
-             var ctx = document.getElementById('radarChart').getContext('2d');
-             if(radarChart) radarChart.destroy();
-             
-             // Normalize scores for better visualization (Approximate max values)
-             var maxEsp = 110; 
-             var maxDisc = 40;
-             var maxGeral = 30; // approx
-
-             radarChart = new Chart(ctx, {
-                 type: 'radar',
-                 data: {
-                     labels: ['Específica', 'Discursiva', 'Geral'],
-                     datasets: [{
-                         label: 'Desempenho',
-                         data: [
-                             (c.esp_score / maxEsp) * 100, 
-                             (c.disc_score / maxDisc) * 100, 
-                             (c.geral_score / maxGeral) * 100
-                         ],
-                         fill: true,
-                         backgroundColor: 'rgba(79, 70, 229, 0.2)',
-                         borderColor: 'rgb(79, 70, 229)',
-                         pointBackgroundColor: 'rgb(79, 70, 229)',
-                         pointBorderColor: '#fff',
-                         pointHoverBackgroundColor: '#fff',
-                         pointHoverBorderColor: 'rgb(79, 70, 229)'
-                     }]
-                 },
-                 options: {
-                     elements: { line: { borderWidth: 3 } },
-                     scales: {
-                         r: {
-                             angleLines: { display: false },
-                             suggestedMin: 0,
-                             suggestedMax: 100,
-                             ticks: { display: false }
-                         }
-                     },
-                     plugins: { legend: { display: false } }
-                 }
-             });
-        }
-        
-        // --- MODAL ---
-        window.openModal = function(c, pos, pillClass) {
-            currentModalCandidate = c; 
-            
-            document.getElementById('mName').innerText = c.name;
-            document.getElementById('mPos').innerText = '#' + c.pos_geral; 
-            document.getElementById('mId').innerText = c.id;
-            document.getElementById('mTotal').innerText = c.total_score.toFixed(2);
-            document.getElementById('mEsp').innerText = c.esp_score.toFixed(2);
-            document.getElementById('mDisc').innerText = c.disc_score.toFixed(2);
-            
-            document.getElementById('mStatusBadge').innerHTML = '<span class="pill ' + pillClass + ' text-sm px-4 py-1">' + c.computedStatus.label + '</span>';
-
-            // Update Exclusion Button Text
-            var btnExclude = document.getElementById('btnExclude');
-            if(excludedIds.includes(c.id)) {
-                btnExclude.innerText = "Reativar Candidato";
-                btnExclude.classList.add('bg-red-100');
-            } else {
-                btnExclude.innerText = "Marcar Desistente";
-                btnExclude.classList.remove('bg-red-100');
-            }
-
-            calculateGap(c);
-            calculatePercentile(c);
-
-            // Wait for modal transition to render chart
-            setTimeout(function() { renderRadarChart(c); }, 300);
-
-            var cotasContainer = document.getElementById('mCotasInfo');
-            cotasContainer.innerHTML = '';
-            
-            var hasDetails = false;
-            var addDetail = function(label, text, colorClass) {
-                if(text && text !== '-') {
-                    cotasContainer.innerHTML += 
-                        '<div class="text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 p-2 rounded border-l-4 ' + colorClass + '">' +
-                            '<strong class="uppercase text-[10px] opacity-70">' + label + '</strong><br/>' + text +
-                        '</div>';
-                    hasDetails = true;
-                }
-            };
-
-            addDetail('Pessoa Negra', c.res_pn_text, 'border-orange-400');
-            addDetail('PCD', c.res_pcd_text, 'border-blue-400');
-            addDetail('Indígena', c.res_pi_text, 'border-emerald-400');
-            addDetail('Quilombola', c.res_pq_text, 'border-purple-400');
-            
-            if(!hasDetails) cotasContainer.innerHTML = '<span class="text-xs text-slate-400 italic block text-center py-2">Nenhuma observação de cota registrada.</span>';
-
-            var modal = document.getElementById('detailModal');
-            var content = document.getElementById('modalContent');
-            var overlay = document.getElementById('modalOverlay');
-            
-            modal.classList.remove('hidden', 'pointer-events-none');
-            requestAnimationFrame(function() {
-                overlay.style.opacity = '1';
-                content.classList.remove('scale-95', 'opacity-0');
-                content.classList.add('scale-100', 'opacity-100');
-            });
-        };
-
-        function setupIntersectionObserver() {
-            var options = { root: document.getElementById('tableContainer'), rootMargin: '200px', threshold: 0.1 };
-            var sentinel = document.getElementById('scrollSentinel');
-            if(sentinel) {
-                observer = new IntersectionObserver(function(entries) {
-                    if(entries[0].isIntersecting && renderedCount < currentViewList.length) renderBatch();
-                }, options);
-                observer.observe(sentinel);
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', function() {
-            var tableContainer = document.getElementById('tableContainer');
-            if(tableContainer) {
-                tableContainer.addEventListener('scroll', function() {
-                    var scrollGroup = document.getElementById('scrollGroup');
-                    if (tableContainer.scrollTop > 300) {
-                        scrollGroup.classList.remove('opacity-0', 'translate-y-10', 'pointer-events-none');
-                    } else {
-                        scrollGroup.classList.add('opacity-0', 'translate-y-10', 'pointer-events-none');
-                    }
-                });
-            }
-        });
-
-        var fileInput = document.getElementById('fileInput');
-        if(fileInput) {
-            fileInput.addEventListener('change', function(e) {
-                var file = e.target.files[0];
-                if(!file) return;
-                document.getElementById('loadingUpload').classList.remove('hidden');
-                var reader = new FileReader();
-                reader.onload = function(evt) { processJSON(evt.target.result); };
-                reader.readAsText(file);
-            });
-        }
-
-        // AUTO-INIT IF DATA EXISTS IN STORAGE
-        if(localStorage.getItem('cnu_v16_data')) checkDataAvailability();
-
-    </script>
-
-    <!-- JSON DATA: COLE O JSON DENTRO DO COLCHETE ABAIXO (MANTENHA NO FINAL DO ARQUIVO) -->
+     <!-- JSON DATA: COLE O JSON DENTRO DO COLCHETE ABAIXO (MANTENHA NO FINAL DO ARQUIVO) -->
     <script id="json-data" type="application/json">
         [
   {
@@ -73824,6 +72652,1175 @@
     "pos_geral": 3109
   }
 ]
+    </script>
+
+    <!-- LOGIC SCRIPT -->
+    <script>
+        ; 
+        
+        // --- VARIAVEIS GLOBAIS ---
+        var CONFIG_VAGAS = { 'AC': 161, 'PN': 63, 'PCD': 13, 'PI': 8, 'PQ': 5 };
+        var CONFIG_PAGE_SIZE = 50;
+        var allData = [];
+        var calculatedData = [];
+        var currentViewList = [];
+        var renderedCount = 0;
+        var chartDist = null;
+        var chartStatus = null;
+        var compareChart = null;
+        var radarChart = null;
+        var searchTimeout = null;
+        var quickFilter = 'ALL'; 
+        var userApiKey = localStorage.getItem('gemini_api_key') || "";
+        var appGeminiKey = SYSTEM_API_KEY;
+        var selectedForCompare = [];
+        var compareMode = false;
+        var currentModalCandidate = null;
+        var favorites = JSON.parse(localStorage.getItem('cnu_favs') || '[]');
+        var excludedIds = JSON.parse(localStorage.getItem('cnu_excluded') || '[]');
+        var currentSort = { key: 'total_score', order: 'desc' }; 
+
+        // --- GLOBAL EXPORTS ---
+        window.acceptDisclaimer = function() {
+            document.getElementById('introScreen').style.opacity = '0';
+            setTimeout(function() {
+                document.getElementById('introScreen').style.display = 'none';
+                document.getElementById('mainLayout').style.opacity = '1';
+                checkDataAvailability();
+            }, 500);
+        };
+
+        window.toggleMobileMenu = function() {
+            var menu = document.getElementById('mobileMenu');
+            if (menu.classList.contains('hidden')) {
+                menu.classList.remove('hidden');
+                menu.classList.add('flex');
+            } else {
+                menu.classList.add('hidden');
+                menu.classList.remove('flex');
+            }
+        };
+
+        // --- SIMULATOR & SETTINGS ---
+        window.toggleSettings = function() {
+             var modal = document.getElementById('settingsModal');
+             var overlay = document.getElementById('settingsOverlay');
+             var content = document.getElementById('settingsContent');
+             
+             if(modal.classList.contains('hidden')) {
+                 document.getElementById('set_ac').value = CONFIG_VAGAS.AC;
+                 document.getElementById('set_pn').value = CONFIG_VAGAS.PN;
+                 document.getElementById('set_pcd').value = CONFIG_VAGAS.PCD;
+                 document.getElementById('set_pi').value = CONFIG_VAGAS.PI;
+                 document.getElementById('set_pq').value = CONFIG_VAGAS.PQ;
+                 
+                 modal.classList.remove('hidden', 'pointer-events-none');
+                 requestAnimationFrame(function(){
+                    overlay.style.opacity = '1';
+                    content.classList.remove('scale-95', 'opacity-0');
+                 });
+             } else {
+                 overlay.style.opacity = '0';
+                 content.classList.add('scale-95', 'opacity-0');
+                 setTimeout(function(){ modal.classList.add('hidden', 'pointer-events-none'); }, 300);
+             }
+        };
+
+        window.applySettings = function() {
+            var rate = parseInt(document.getElementById('abstentionRange').value) || 0;
+            var multiplier = 1 + (rate / 100); 
+
+            CONFIG_VAGAS.AC = Math.ceil((parseInt(document.getElementById('set_ac').value) || 161) * multiplier);
+            CONFIG_VAGAS.PN = Math.ceil((parseInt(document.getElementById('set_pn').value) || 63) * multiplier);
+            CONFIG_VAGAS.PCD = Math.ceil((parseInt(document.getElementById('set_pcd').value) || 13) * multiplier);
+            CONFIG_VAGAS.PI = Math.ceil((parseInt(document.getElementById('set_pi').value) || 8) * multiplier);
+            CONFIG_VAGAS.PQ = Math.ceil((parseInt(document.getElementById('set_pq').value) || 5) * multiplier);
+
+            document.getElementById('vagasInput').value = CONFIG_VAGAS.AC;
+            
+            window.toggleSettings(); 
+            processCascading();
+            updateView();
+            alert("Simulação aplicada com taxa de abstenção de " + rate + "%!");
+        };
+
+        // --- EXCLUSION / GOD MODE ---
+        window.toggleExclusion = function() {
+            if(!currentModalCandidate) return;
+            var id = currentModalCandidate.id;
+            var idx = excludedIds.indexOf(id);
+            
+            if(idx > -1) {
+                excludedIds.splice(idx, 1);
+                alert("Candidato reativado.");
+            } else {
+                excludedIds.push(id);
+                alert("Candidato marcado como desistente.");
+            }
+            localStorage.setItem('cnu_excluded', JSON.stringify(excludedIds));
+            processCascading();
+            updateView();
+            window.closeModal();
+        };
+
+        // --- SNIPER MODE ---
+        window.triggerSniperMode = function() {
+            if(!currentModalCandidate) return;
+            var idx = currentViewList.findIndex(c => c.id === currentModalCandidate.id);
+            if(idx === -1) return;
+            
+            var start = Math.max(0, idx - 5);
+            var end = Math.min(currentViewList.length, idx + 6);
+            
+            // Temporary override view list
+            var snippet = currentViewList.slice(start, end);
+            
+            // Re-render only snippet
+            document.getElementById('tableBody').innerHTML = '';
+            // Hack: manually render without breaking pagination
+            var fragment = document.createDocumentFragment();
+            snippet.forEach(function(c, i) {
+                // Logic mostly duplicated from renderBatch for snippet
+                 // ... simplified render ...
+            });
+            // Better approach: filter by IDs
+            var ids = snippet.map(c => c.id);
+            // We use quick filter logic to hack it or just alert for now as requested simple implementation
+            alert("Modo Vizinhos Ativado! Filtrando apenas candidatos próximos.");
+            document.getElementById('searchInput').value = ""; 
+            // Filter global list to just these IDs
+            currentViewList = calculatedData.filter(c => ids.includes(c.id));
+            renderedCount = 0;
+            document.getElementById('tableBody').innerHTML = '';
+            renderBatch();
+            window.closeModal();
+        };
+
+        // --- SORTING ---
+        window.sortData = function(key) {
+            if (currentSort.key === key) {
+                currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.key = key;
+                currentSort.order = 'desc'; 
+            }
+            
+            currentViewList.sort(function(a, b) {
+                var valA = a[key];
+                var valB = b[key];
+                if (typeof valA === 'string') {
+                    valA = valA.toLowerCase(); 
+                    valB = valB.toLowerCase();
+                }
+                if (valA < valB) return currentSort.order === 'asc' ? -1 : 1;
+                if (valA > valB) return currentSort.order === 'asc' ? 1 : -1;
+                return 0;
+            });
+            
+            renderedCount = 0;
+            document.getElementById('tableBody').innerHTML = '';
+            renderBatch();
+        };
+
+        // --- FAVORITES ---
+        window.toggleFavorite = function(id, event) {
+            if(event) event.stopPropagation();
+            var idx = favorites.indexOf(id);
+            if(idx > -1) favorites.splice(idx, 1);
+            else favorites.push(id);
+            localStorage.setItem('cnu_favs', JSON.stringify(favorites));
+            
+            var star = document.getElementById('star-' + id);
+            if(star) {
+                if (star.classList.contains('fa-regular')) {
+                    star.classList.remove('fa-regular');
+                    star.classList.add('fa-solid', 'active');
+                } else {
+                    star.classList.remove('fa-solid', 'active');
+                    star.classList.add('fa-regular');
+                }
+            }
+            if(document.getElementById('viewFilter').value === 'FAV') updateView();
+        };
+
+        // --- VISUAL SHARE ---
+        window.generateShareImage = function() {
+             if(!currentModalCandidate) return;
+             var c = currentModalCandidate;
+             
+             document.getElementById('scName').innerText = c.name;
+             document.getElementById('scPos').innerText = '#' + c.pos_geral;
+             document.getElementById('scTotal').innerText = c.total_score.toFixed(2);
+             document.getElementById('scStatus').innerText = c.computedStatus.label;
+             
+             var node = document.getElementById('shareCardContainer');
+             
+             html2canvas(node).then(function(canvas) {
+                 var link = document.createElement('a');
+                 link.download = 'Resultado_' + c.name.split(' ')[0] + '.png';
+                 link.href = canvas.toDataURL();
+                 link.click();
+             });
+        };
+
+        window.toggleDarkMode = function() {
+            var html = document.documentElement;
+            if(html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+            updateCharts();
+        };
+
+        window.setQuickFilter = function(type) {
+            quickFilter = type;
+            ['ALL', 'VAGA', 'CR'].forEach(function(k) {
+                var btn = document.getElementById('qf-' + k);
+                if(k === type) btn.className = "px-3 py-1.5 rounded text-[10px] font-bold uppercase transition-all bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm transform scale-105";
+                else btn.className = "px-3 py-1.5 rounded text-[10px] font-bold uppercase text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-all";
+            });
+            renderedCount = 0;
+            document.getElementById('tableBody').innerHTML = '';
+            renderBatch();
+        };
+
+        window.toggleCompareMode = function() {
+            compareMode = !compareMode;
+            selectedForCompare = [];
+            var btn = document.getElementById('compareModeBtn');
+            var fab = document.getElementById('fabCompare');
+            var th = document.getElementById('colCompare');
+            
+            if(compareMode) {
+                btn.classList.add('bg-indigo-100', 'text-indigo-700', 'border-indigo-300');
+                if(fab) fab.classList.remove('scale-0');
+                th.classList.remove('hidden');
+            } else {
+                btn.classList.remove('bg-indigo-100', 'text-indigo-700', 'border-indigo-300');
+                if(fab) fab.classList.add('scale-0');
+                th.classList.add('hidden');
+            }
+            document.getElementById('tableBody').innerHTML = '';
+            renderedCount = 0;
+            renderBatch();
+        };
+
+        window.executeComparison = function() {
+            if(selectedForCompare.length < 2) return alert("Selecione 2 candidatos.");
+            var c1 = calculatedData.find(function(c) { return c.id === selectedForCompare[0]; });
+            var c2 = calculatedData.find(function(c) { return c.id === selectedForCompare[1]; });
+            
+            var fillComp = function(elId, c) {
+                document.getElementById(elId).innerHTML = 
+                    '<div class="font-bold text-sm truncate">' + c.name + '</div>' +
+                    '<div class="text-[10px] text-slate-500 mb-2">#' + c.pos_geral + '</div>' +
+                    '<div class="text-2xl font-black text-indigo-700">' + c.total_score.toFixed(2) + '</div>';
+            };
+            fillComp('comp1', c1);
+            fillComp('comp2', c2);
+
+            var ctx = document.getElementById('compareChart').getContext('2d');
+            if(compareChart) compareChart.destroy();
+            compareChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Específica', 'Discursiva', 'Total'],
+                    datasets: [
+                        { label: c1.name.split(' ')[0], data: [c1.esp_score, c1.disc_score, c1.total_score], backgroundColor: '#6366f1' },
+                        { label: c2.name.split(' ')[0], data: [c2.esp_score, c2.disc_score, c2.total_score], backgroundColor: '#d946ef' }
+                    ]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: false } } }
+            });
+
+            var modal = document.getElementById('compareModal');
+            var overlay = document.getElementById('compareOverlay');
+            var content = document.getElementById('compareContent');
+            modal.classList.remove('hidden', 'pointer-events-none');
+            setTimeout(function() { overlay.style.opacity = '1'; content.classList.remove('scale-95', 'opacity-0'); }, 10);
+        };
+
+        window.closeCompare = function() {
+            var modal = document.getElementById('compareModal');
+            document.getElementById('compareOverlay').style.opacity = '0';
+            document.getElementById('compareContent').classList.add('scale-95', 'opacity-0');
+            setTimeout(function() { modal.classList.add('hidden', 'pointer-events-none'); }, 300);
+        };
+
+        window.toggleAI = function() {
+            var modal = document.getElementById('aiModal');
+            var overlay = document.getElementById('aiOverlay');
+            var content = document.getElementById('aiContent');
+
+            if(modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden', 'pointer-events-none');
+                requestAnimationFrame(function() {
+                    overlay.style.opacity = '1';
+                    content.classList.remove('scale-95', 'opacity-0');
+                    content.classList.add('scale-100', 'opacity-100');
+                });
+                if(!userApiKey && !appGeminiKey) {
+                    document.getElementById('apiKeyConfig').classList.remove('hidden');
+                }
+            } else {
+                overlay.style.opacity = '0';
+                content.classList.remove('scale-100', 'opacity-100');
+                content.classList.add('scale-95', 'opacity-0');
+                setTimeout(function() { modal.classList.add('hidden', 'pointer-events-none'); }, 300);
+            }
+        };
+
+        window.saveApiKey = function() {
+            var val = document.getElementById('apiKeyInput').value.trim();
+            if(val) {
+                userApiKey = val;
+                localStorage.setItem('gemini_api_key', val);
+                document.getElementById('apiKeyConfig').classList.add('hidden');
+                addAiMessage("bot", "Chave API salva! Agora você pode me fazer perguntas sobre os dados.");
+            }
+        };
+
+        window.sendToAI = async function() {
+            var input = document.getElementById('aiInput');
+            var question = input.value.trim();
+            if(!question) return;
+
+            var keyToUse = userApiKey || appGeminiKey;
+            if(!keyToUse) {
+                addAiMessage("bot", "⚠️ Por favor, insira sua Google API Key nas configurações acima para usar a IA.");
+                document.getElementById('apiKeyConfig').classList.remove('hidden');
+                return;
+            }
+
+            addAiMessage("user", question);
+            input.value = '';
+            
+            var loadingDiv = document.createElement('div');
+            loadingDiv.className = "ai-message bot flex items-center gap-2";
+            loadingDiv.innerHTML = '<div class="typing-dot"></div><div class="typing-dot" style="animation-delay: 0.1s"></div><div class="typing-dot" style="animation-delay: 0.2s"></div>';
+            loadingDiv.id = "aiLoading";
+            document.getElementById('aiChatArea').appendChild(loadingDiv);
+
+            var stats = {
+                total: allData.length,
+                filtered: currentViewList.length,
+                cutVaga: document.getElementById('kpiCutVaga').innerText
+            };
+            var top5 = currentViewList.slice(0, 5).map(function(c) { 
+                return c.pos_geral + '. ' + c.name + ' (' + c.total_score + ') - ' + c.computedStatus.label; 
+            }).join('\n');
+
+            var prompt = 
+                'Contexto: Painel de Classificação CNU Bloco 7 (Justiça e Defesa).\n' +
+                'Dados Atuais:\n' +
+                '- Total Candidatos Carregados: ' + stats.total + '\n' +
+                '- Visualização Atual: ' + document.getElementById('viewFilter').value + '\n' +
+                '- Nota Corte (Geral/AC estimativa): ' + document.getElementById('kpiCutVaga').innerText + '\n' +
+                '- Top 5 da lista atual:\n' + top5 + '\n' +
+                'Pergunta do usuário: "' + question + '"\n' +
+                'Responda de forma concisa, analítica e em Português do Brasil. Use formatação Markdown.';
+
+            try {
+                var response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=' + keyToUse, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+
+                var data = await response.json();
+                document.getElementById('aiLoading').remove();
+                
+                if(data.error) {
+                    addAiMessage("bot", '❌ Erro na API: ' + data.error.message);
+                } else {
+                    var text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Não consegui gerar uma resposta.";
+                    addAiMessage("bot", text);
+                }
+            } catch(e) {
+                document.getElementById('aiLoading').remove();
+                addAiMessage("bot", "❌ Erro de conexão. Verifique sua internet.");
+            }
+        };
+
+        window.shareApp = function() {
+            var shareData = {
+                title: 'Painel CNU - Bloco 7',
+                text: 'Confira a classificação detalhada do CNU Bloco 7 - Justiça e Defesa.',
+                url: window.location.href,
+            };
+            if (navigator.share) navigator.share(shareData).catch(console.error);
+            else {
+                var url = 'https://api.whatsapp.com/send?text=' + encodeURIComponent(shareData.text + ' ' + shareData.url);
+                window.open(url, '_blank');
+            }
+        };
+
+        window.saveOfflineHTML = function() {
+            if(allData.length === 0) return alert("Carregue dados primeiro.");
+            var htmlContent = document.documentElement.outerHTML;
+            var dataString = JSON.stringify(allData);
+            // Substitui apenas o conteúdo do script de dados, mantendo a estrutura segura
+            var scriptTag = '<script id="json-data" type="application/json">' + dataString + '<\/script>'; 
+            // Regex ajustado para ser mais tolerante
+            htmlContent = htmlContent.replace(/<script id="json-data" type="application\/json">([\s\S]*?)<\/script>/, scriptTag);
+            var blob = new Blob([htmlContent], {type: 'text/html'});
+            var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'Painel_CNU_All_In_One.html'; a.click();
+        };
+
+        window.clearData = function() { localStorage.removeItem('cnu_v16_data'); location.reload(); };
+        
+        window.closeModal = function() {
+            var modal = document.getElementById('detailModal');
+            var content = document.getElementById('modalContent');
+            var overlay = document.getElementById('modalOverlay');
+
+            overlay.style.opacity = '0';
+            content.classList.remove('scale-100', 'opacity-100');
+            content.classList.add('scale-95', 'opacity-0');
+            
+            setTimeout(function() {
+                modal.classList.add('hidden', 'pointer-events-none');
+            }, 300);
+        };
+        
+        window.shareCandidateResult = function() {
+            if(!currentModalCandidate) return;
+            var c = currentModalCandidate;
+            var name = c.name;
+            var pos = '#' + c.pos_geral; // Use Global Position always
+            var total = c.total_score.toFixed(2);
+            var text = 'Confira o resultado de ' + name + ' no CNU Bloco 7:\n🏆 Posição Geral: ' + pos + '\n📊 Nota Final: ' + total + '\n\nVia Painel CNU: ' + window.location.href;
+            window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(text), '_blank');
+        };
+
+        window.exportCSV = function() {
+            var headers = ['Pos', 'Geral', 'Nome', 'Inscricao', 'Nota Final', 'Especifica', 'Discursiva', 'Cotas', 'Situacao'];
+            var rows = currentViewList.map(function(c, i) {
+                return [
+                    i + 1,
+                    c.pos_geral,
+                    '"' + c.name + '"',
+                    c.id,
+                    c.total_score.toFixed(2).replace('.',','),
+                    c.esp_score.toFixed(2).replace('.',','),
+                    c.disc_score.toFixed(2).replace('.',','),
+                    '"' + c.cotas.join(', ') + '"',
+                    '"' + c.computedStatus.label + '"'
+                ].join(';');
+            });
+            
+            var csvContent = "data:text/csv;charset=utf-8," + headers.join(";") + "\n" + rows.join("\n");
+            var encodedUri = encodeURI(csvContent);
+            var link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", 'CNU_Bloco7_Export.csv');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+
+        window.exportPDF = function() {
+            var jsPDF = window.jspdf.jsPDF;
+            var doc = new jsPDF();
+            
+            // 1. Cabeçalho Minimalista
+            doc.setFillColor(79, 70, 229);
+            doc.rect(0, 0, 210, 35, 'F'); 
+
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(18);
+            doc.setFont("helvetica", "bold");
+            doc.text("Painel CNU - Bloco 7", 14, 18);
+
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            doc.text("Justiça e Defesa - Classificação Extraoficial", 14, 26);
+
+            var filterName = document.getElementById('viewFilter').options[document.getElementById('viewFilter').selectedIndex].text;
+            var dateStr = new Date().toLocaleDateString('pt-BR');
+            doc.setFontSize(9);
+            doc.text('Lista: ' + filterName, 196, 18, { align: 'right' });
+            doc.text('Gerado em: ' + dateStr, 196, 26, { align: 'right' });
+
+            var rows = currentViewList.map(function(c, i) {
+                return [
+                    i + 1,
+                    c.pos_geral,
+                    c.id,
+                    c.name,
+                    c.cotas.filter(function(x){ return x!='AC'; }).join(', ') || '-',
+                    c.computedStatus.label,
+                    c.total_score.toFixed(2)
+                ];
+            });
+
+            doc.autoTable({
+                head: [['#', 'Geral', 'Inscrição', 'Nome', 'Cotas', 'Situação', 'Nota']],
+                body: rows,
+                startY: 40,
+                theme: 'grid',
+                styles: { fontSize: 7, cellPadding: 3, font: "helvetica", lineColor: [229, 231, 235], lineWidth: 0.1 },
+                headStyles: { fillColor: [255, 255, 255], textColor: [79, 70, 229], fontStyle: 'bold', lineWidth: 0.1, lineColor: [229, 231, 235] },
+                columnStyles: {
+                    0: { cellWidth: 10, halign: 'center', fontStyle: 'bold' },
+                    1: { cellWidth: 12, halign: 'center' },
+                    2: { cellWidth: 28, halign: 'center', font: 'courier' },
+                    3: { cellWidth: 'auto' },
+                    4: { cellWidth: 20 },
+                    5: { cellWidth: 30, halign: 'center', fontStyle: 'bold' },
+                    6: { cellWidth: 15, halign: 'right', fontStyle: 'bold', textColor: [67, 56, 202] }
+                },
+                alternateRowStyles: { fillColor: [249, 250, 251] },
+                didParseCell: function(data) {
+                    if (data.section === 'body' && data.column.index === 5) {
+                        var text = data.cell.raw;
+                        if (text.includes('VAGA')) data.cell.styles.textColor = [22, 163, 74];
+                        else if (text.includes('CR')) data.cell.styles.textColor = [2, 132, 199];
+                        else { data.cell.styles.textColor = [156, 163, 175]; data.cell.styles.fontStyle = 'normal'; }
+                    }
+                },
+                didDrawPage: function (data) {
+                    var pageCount = doc.internal.getNumberOfPages();
+                    doc.setFontSize(8);
+                    doc.setTextColor(150);
+                    doc.text('Página ' + pageCount, data.settings.margin.left, doc.internal.pageSize.height - 10);
+                    doc.text('Painel CNU', 196, doc.internal.pageSize.height - 10, { align: 'right' });
+                }
+            });
+
+            doc.save('CNU_' + filterName.replace(/\s+/g, '_') + '.pdf');
+        };
+
+        window.loadFromText = function() {
+            var txt = document.getElementById('jsonTextInput').value;
+            if(!txt.trim()) return alert("Cole o JSON.");
+            processJSON(txt);
+        };
+
+        window.switchTab = function(tab) {
+            var btnFile = document.getElementById('tabFile');
+            var btnText = document.getElementById('tabText');
+            var activeClass = "flex-1 py-4 text-xs font-bold uppercase tracking-wide text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/30 dark:bg-indigo-900/20";
+            var inactiveClass = "flex-1 py-4 text-xs font-bold uppercase tracking-wide text-slate-400 hover:text-indigo-600 transition-colors";
+
+            btnFile.className = tab === 'file' ? activeClass : inactiveClass;
+            btnText.className = tab === 'text' ? activeClass : inactiveClass;
+            document.getElementById('panelFile').classList.toggle('hidden', tab !== 'file');
+            document.getElementById('panelFile').classList.toggle('flex', tab === 'file');
+            document.getElementById('panelText').classList.toggle('hidden', tab !== 'text');
+            document.getElementById('panelText').classList.toggle('flex', tab === 'text');
+        };
+
+        window.toggleSidebar = function() {
+            var sidebar = document.getElementById('sidebarContainer');
+            var btn = document.getElementById('btnToggleCharts');
+            if(sidebar.classList.contains('hidden')) {
+                sidebar.classList.remove('hidden'); sidebar.classList.add('flex');
+                btn.classList.add('bg-indigo-100', 'text-indigo-600', 'border-indigo-200'); btn.classList.remove('bg-white', 'text-slate-600', 'border-slate-200');
+            } else {
+                sidebar.classList.add('hidden'); sidebar.classList.remove('flex');
+                btn.classList.remove('bg-indigo-100', 'text-indigo-600', 'border-indigo-200'); btn.classList.add('bg-white', 'text-slate-600', 'border-slate-200');
+            }
+        };
+
+        window.clearSearch = function() {
+            document.getElementById('searchInput').value = '';
+            toggleClearBtn();
+            handleSearchInput();
+            document.getElementById('searchInput').focus();
+        };
+
+        window.handleSearchInput = function() {
+            toggleClearBtn();
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(function() {
+                document.getElementById('tableBody').innerHTML = '';
+                renderedCount = 0;
+                renderBatch();
+            }, 150);
+        };
+
+        window.scrollToTop = function() { document.getElementById('tableContainer').scrollTo({ top: 0, behavior: 'smooth' }); };
+        window.scrollToBottom = function() { 
+            var container = document.getElementById('tableContainer');
+            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' }); 
+        };
+
+        window.initApp = function() {
+            document.getElementById('uploadScreen').classList.add('hidden');
+            document.getElementById('dashboardScreen').classList.remove('hidden');
+            document.getElementById('dashboardScreen').classList.add('flex');
+            document.getElementById('statusBadge').classList.remove('hidden');
+            document.getElementById('statusBadge').classList.add('flex');
+            document.getElementById('dbCount').innerText = allData.length;
+            
+            allData.sort(function(a,b) {
+                if (b.total_score !== a.total_score) return b.total_score - a.total_score;
+                if ((b.esp_score||0) !== (a.esp_score||0)) return (b.esp_score||0) - (a.esp_score||0);
+                if ((b.disc_score||0) !== (a.disc_score||0)) return (b.disc_score||0) - (a.disc_score||0);
+                return (b.geral_score||0) - (a.geral_score||0);
+            });
+
+            processCascading();
+            setupIntersectionObserver();
+            updateView();
+        };
+
+        window.updateView = function() {
+            var filter = document.getElementById('viewFilter').value;
+            var inputVagas = document.getElementById('vagasInput');
+            
+            if(CONFIG_VAGAS[filter]) inputVagas.value = CONFIG_VAGAS[filter];
+            else if(filter === 'Geral') inputVagas.value = 250;
+
+            document.getElementById('tableHeader').innerText = filter === 'Geral' ? 'Classificação' : 'Lista: ' + filter;
+
+            if (filter === 'Geral') currentViewList = [].concat(calculatedData);
+            else if (filter === 'FAV') currentViewList = calculatedData.filter(function(c) { return favorites.includes(c.id); });
+            else currentViewList = calculatedData.filter(function(c) { return c.cotas.includes(filter); });
+            
+            updateKPIs(filter);
+            updateCharts();
+            
+            document.getElementById('tableBody').innerHTML = '';
+            renderedCount = 0;
+            renderBatch();
+        };
+
+        window.updateVagasManual = function() {
+            var val = parseInt(document.getElementById('vagasInput').value) || 0;
+            CONFIG_VAGAS.AC = val;
+            processCascading();
+            updateView();
+        };
+
+        var lastUpdateEl = document.getElementById('lastUpdateDate');
+        if(lastUpdateEl) lastUpdateEl.innerText = new Date().toLocaleDateString('pt-BR');
+
+        function toggleSelectCandidate(id) {
+            if(selectedForCompare.includes(id)) {
+                selectedForCompare = selectedForCompare.filter(function(i) { return i !== id; });
+            } else {
+                if(selectedForCompare.length >= 2) {
+                    var removedId = selectedForCompare.shift();
+                    updateRowVisuals(removedId, false);
+                }
+                selectedForCompare.push(id);
+            }
+            var isSelected = selectedForCompare.includes(id);
+            updateRowVisuals(id, isSelected);
+            if(selectedForCompare.length === 2) setTimeout(executeComparison, 500);
+        }
+
+        function updateRowVisuals(id, isSelected) {
+            var row = document.getElementById('tr-' + id);
+            if(!row) return;
+            if(isSelected) {
+                row.classList.add('bg-indigo-50', 'dark:bg-indigo-900/40');
+            } else {
+                row.classList.remove('bg-indigo-50', 'dark:bg-indigo-900/40');
+            }
+            var checkbox = row.querySelector('.custom-checkbox');
+            if(checkbox) checkbox.checked = isSelected;
+        }
+
+        function addAiMessage(role, text) {
+            var area = document.getElementById('aiChatArea');
+            var div = document.createElement('div');
+            div.className = 'ai-message ' + role + ' shadow-sm border border-slate-200 dark:border-slate-800';
+            div.innerHTML = marked.parse(text);
+            area.appendChild(div);
+            area.scrollTop = area.scrollHeight;
+        }
+
+        function toggleClearBtn() {
+            var val = document.getElementById('searchInput').value;
+            var btn = document.getElementById('clearSearchBtn');
+            if(val.length > 0) btn.classList.remove('hidden');
+            else btn.classList.add('hidden');
+        }
+
+        function checkDataAvailability() {
+            var foundData = false;
+            try {
+                var embedded = document.getElementById('json-data').textContent.trim();
+                if(embedded && embedded.length > 50 && embedded.startsWith('[')) {
+                    processJSON(embedded);
+                    foundData = true;
+                }
+            } catch(e) {}
+
+            if (!foundData) {
+                try {
+                    var cached = localStorage.getItem('cnu_v16_data');
+                    if(cached) {
+                        var parsed = JSON.parse(cached);
+                        if(Array.isArray(parsed) && parsed.length > 0) {
+                            allData = parsed;
+                            initApp();
+                            foundData = true;
+                        }
+                    } 
+                } catch(e) {}
+            }
+
+            if(!foundData) document.getElementById('uploadScreen').classList.remove('hidden');
+        }
+
+        function processJSON(jsonString) {
+            try {
+                var clean = jsonString.replace(/<!--[\s\S]*?-->/g, "").trim();
+                var json = JSON.parse(clean);
+                if(!Array.isArray(json)) throw new Error("Inválido");
+                allData = json;
+                try { localStorage.setItem('cnu_v16_data', JSON.stringify(allData)); } catch(e){}
+                initApp();
+            } catch(err) { 
+                alert("JSON Inválido. Verifique se copiou corretamente."); 
+                document.getElementById('loadingUpload').classList.add('hidden');
+            }
+        }
+
+        function processCascading() {
+            var filled = { 'AC': 0, 'PN': 0, 'PCD': 0, 'PI': 0, 'PQ': 0 };
+            var limitAC = CONFIG_VAGAS.AC; 
+            
+            calculatedData = allData.map(function(c) {
+                // If excluded, mark as ignored
+                if(excludedIds.includes(c.id)) {
+                    return Object.assign({}, c, { 
+                        computedStatus: { type: 'st-ignore', label: 'IGNORADO' }, 
+                        isVaga: false 
+                    });
+                }
+                
+                var status = { type: 'st-elim', label: 'ELIMINADO' };
+                var isVaga = false;
+
+                if (filled.AC < limitAC) {
+                    status = { type: 'st-vaga', label: 'VAGA AC' };
+                    filled.AC++;
+                    isVaga = true;
+                } else {
+                    for (var i = 0; i < ['PN', 'PCD', 'PI', 'PQ'].length; i++) {
+                        var q = ['PN', 'PCD', 'PI', 'PQ'][i];
+                        if (c.cotas.includes(q) && filled[q] < CONFIG_VAGAS[q]) {
+                            if (c.status_map && c.status_map[q] === 'CONFIRMED') {
+                                status = { type: 'st-vaga', label: 'VAGA ' + q };
+                                filled[q]++;
+                                isVaga = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                return Object.assign({}, c, { computedStatus: status, isVaga: isVaga });
+            });
+
+            var filledCR = { 'AC': 0, 'PN': 0, 'PCD': 0, 'PI': 0, 'PQ': 0 };
+            var limitCR_AC = limitAC * 2;
+
+            calculatedData.forEach(function(c) {
+                if (c.isVaga || excludedIds.includes(c.id)) return;
+                var isCR = false;
+                if (filledCR.AC < limitCR_AC) {
+                     c.computedStatus = { type: 'st-cr', label: 'CR AC' };
+                     filledCR.AC++;
+                     isCR = true;
+                }
+                if (!isCR) {
+                    for (var i = 0; i < ['PN', 'PCD', 'PI', 'PQ'].length; i++) {
+                        var q = ['PN', 'PCD', 'PI', 'PQ'][i];
+                        if (c.cotas.includes(q)) {
+                             if (c.status_map && c.status_map[q] === 'CONFIRMED') {
+                                if (filledCR[q] < (CONFIG_VAGAS[q] * 2)) {
+                                    c.computedStatus = { type: 'st-cr', label: 'CR ' + q };
+                                    filledCR[q]++;
+                                    break;
+                                }
+                             }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateKPIs(filter) {
+            var total = currentViewList.length;
+            document.getElementById('kpiListTotal').innerText = total;
+            
+            var counts = {};
+            currentViewList.forEach(function(c) {
+                c.cotas.forEach(function(cot) {
+                    if(cot!=='AC') counts[cot] = (counts[cot]||0)+1;
+                });
+            });
+            var counterHtml = Object.entries(counts).map(function(e) { return e[0] + ':' + e[1]; }).join(' | ');
+            document.getElementById('cotasCounter').innerText = counterHtml;
+
+            if(total===0) return;
+            document.getElementById('kpiMax').innerText = currentViewList[0].total_score.toFixed(2);
+
+            var targetVaga = filter === 'Geral' ? 'VAGA' : 'VAGA ' + filter;
+            var targetCR = filter === 'Geral' ? 'CR' : 'CR ' + filter;
+            if(filter === 'AC') { targetVaga='VAGA AC'; targetCR='CR AC'; }
+
+            var lastVagaCandidate = [].concat(currentViewList).reverse().find(function(c) { return c.computedStatus.label.includes(targetVaga); });
+            var lastCRCandidate = [].concat(currentViewList).reverse().find(function(c) { return c.computedStatus.label.includes(targetCR); });
+
+            if(!lastVagaCandidate && filter !== 'Geral') lastVagaCandidate = [].concat(currentViewList).reverse().find(function(c) { return c.computedStatus.label.includes('VAGA'); });
+
+            var setKPI = function(idVal, idPos, cand) {
+                document.getElementById(idVal).innerText = cand ? cand.total_score.toFixed(2) : "-";
+                document.getElementById(idPos).innerText = cand ? '#' + (currentViewList.indexOf(cand)+1) : "-";
+            };
+
+            setKPI('kpiCutVaga', 'posCutVaga', lastVagaCandidate);
+            setKPI('kpiCutCR', 'posCutCR', lastCRCandidate);
+        }
+
+        function updateCharts() {
+            var isDark = document.documentElement.classList.contains('dark');
+            var textColor = isDark ? '#94a3b8' : '#64748b';
+            var ctxStatus = document.getElementById('statusChart').getContext('2d');
+            var ctxScore = document.getElementById('scoreChart').getContext('2d');
+
+            var counts = { VAGA: 0, CR: 0, ELIM: 0 };
+            var scores = [];
+            currentViewList.forEach(function(c) {
+                if(c.computedStatus.label.includes('VAGA')) counts.VAGA++;
+                else if(c.computedStatus.label.includes('CR')) counts.CR++;
+                else counts.ELIM++;
+                scores.push(c.total_score);
+            });
+
+            if(chartStatus) chartStatus.destroy();
+            chartStatus = new Chart(ctxStatus, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Vaga', 'CR', 'Outros'],
+                    datasets: [{ 
+                        data: [counts.VAGA, counts.CR, counts.ELIM], 
+                        backgroundColor: ['#10b981', '#0ea5e9', isDark ? '#334155' : '#f1f5f9'], 
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { position: 'right', labels: { boxWidth: 8, font: {size: 9}, color: textColor } } } }
+            });
+
+            var minScore = Math.floor(Math.min.apply(null, scores));
+            var maxScore = Math.ceil(Math.max.apply(null, scores));
+            var step = 2;
+            var labels = [];
+            var dataBins = [];
+            for(var i = minScore; i < maxScore; i+=step) {
+                labels.push(i + '-' + (i+step));
+                dataBins.push(scores.filter(function(s) { return s >= i && s < i+step; }).length);
+            }
+
+            if(chartDist) chartDist.destroy();
+            chartDist = new Chart(ctxScore, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{ label: 'Candidatos', data: dataBins, backgroundColor: '#6366f1', borderRadius: 2 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { font: {size: 8}, color: textColor } }, y: { display: false } } }
+            });
+        }
+
+        function renderBatch() {
+            var tbody = document.getElementById('tableBody');
+            var search = document.getElementById('searchInput').value.toLowerCase();
+            var spinner = document.getElementById('spinnerIcon');
+            var sentinel = document.getElementById('scrollSentinel');
+
+            var list = currentViewList.filter(function(c) {
+                var matchSearch = !search || c.name.toLowerCase().includes(search) || c.id.includes(search);
+                if(!matchSearch) return false;
+                if(quickFilter === 'ALL') return true;
+                if(quickFilter === 'VAGA') return c.computedStatus.label.includes('VAGA');
+                if(quickFilter === 'CR') return c.computedStatus.label.includes('CR');
+                return false;
+            });
+
+            if (list.length === 0) {
+                document.getElementById('emptyState').classList.remove('hidden');
+                sentinel.style.display = 'none';
+                return;
+            } else {
+                document.getElementById('emptyState').classList.add('hidden');
+                sentinel.style.display = 'flex';
+            }
+
+            if (renderedCount >= list.length) { 
+                sentinel.style.display = 'none'; 
+                return; 
+            }
+            spinner.classList.remove('hidden');
+
+            var chunk = list.slice(renderedCount, renderedCount + CONFIG_PAGE_SIZE);
+            var fragment = document.createDocumentFragment();
+
+            chunk.forEach(function(c, i) {
+                var pos = renderedCount + i + 1;
+                var badgesInfo = '';
+                if(c.cotas.length === 1 && c.cotas[0] === 'AC') {
+                     badgesInfo = '<span class="badge tag-ac">AC</span>';
+                } else {
+                    c.cotas.forEach(function(q) {
+                        if(q === 'AC') return;
+                        var st = c.status_map ? c.status_map[q] : 'NONE';
+                        var colorClass = 'tag-' + q.toLowerCase();
+                        var styleExtra = '';
+                        var icon = '';
+                        if (st === 'DENIED') { colorClass = 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800'; styleExtra = 'opacity: 0.7; text-decoration: line-through;'; icon = '<i class="fa-solid fa-xmark ml-1"></i>'; } 
+                        else if (st === 'ABSENT') { colorClass = 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'; styleExtra = 'opacity: 0.7;'; icon = ' (Aus)'; } 
+                        else if (st === 'CONFIRMED') { icon = '<i class="fa-solid fa-check ml-1 text-emerald-600 dark:text-emerald-400"></i>'; }
+                        badgesInfo += '<span class="badge ' + colorClass + ' mr-1 mb-1" style="' + styleExtra + '" title="Status: ' + st + '">' + q + icon + '</span>';
+                    });
+                }
+
+                var st = c.computedStatus;
+                var pillClass = 'st-elim';
+                if (st.label.includes('VAGA')) pillClass = 'st-vaga'; 
+                else if (st.label.includes('CR')) pillClass = 'st-cr';
+                else if (st.type === 'st-ignore') pillClass = 'st-ignore';
+
+                var errorHtml = '';
+                var errorMsgs = [];
+                var checkErr = function(txt, type) { if(txt && (txt.toLowerCase().includes('não') || txt.toLowerCase().includes('ausente'))) errorMsgs.push(type); };
+                checkErr(c.res_pn_text, 'PN'); checkErr(c.res_pcd_text, 'PCD'); checkErr(c.res_pi_text, 'PI'); checkErr(c.res_pq_text, 'PQ');
+                if(errorMsgs.length > 0) errorHtml = '<div class="mt-0.5 text-[9px] text-red-500 dark:text-red-400 font-medium"><i class="fa-solid fa-circle-exclamation mr-1"></i>Negado: ' + errorMsgs.join(', ') + '</div>';
+
+                var isFav = favorites.includes(c.id);
+                var starClass = isFav ? "fa-solid active" : "fa-regular";
+                var starIcon = '<i id="star-' + c.id + '" class="' + starClass + ' fa-star star-fav mr-1" onclick="toggleFavorite(\'' + c.id + '\', event)"></i>';
+
+                var tr = document.createElement('tr');
+                tr.className = "hover-row border-b border-slate-50 dark:border-slate-800 transition-all fade-in bg-white dark:bg-slate-900";
+                tr.id = 'tr-' + c.id;
+                var isSelected = selectedForCompare.includes(c.id);
+                var bgSelected = isSelected ? 'bg-indigo-50 dark:bg-indigo-900/40' : '';
+                tr.className += ' ' + bgSelected;
+                
+                // Dim row if excluded
+                if(excludedIds.includes(c.id)) tr.style.opacity = '0.5';
+
+                tr.onclick = function(e) {
+                    if(compareMode) { toggleSelectCandidate(c.id); e.stopPropagation(); } 
+                    else { openModal(c, pos, pillClass); }
+                };
+                
+                var checkHtml = '';
+                if(compareMode) checkHtml = '<td class="px-3 py-2.5 text-center"><input type="checkbox" class="custom-checkbox" ' + (isSelected ? 'checked' : '') + '></td>';
+
+                tr.innerHTML = checkHtml +
+                    '<td class="px-4 py-2.5 text-center font-bold text-slate-400 dark:text-slate-500 text-[10px] bg-slate-50/50 dark:bg-slate-800/50">' + pos + '</td>' +
+                    '<td class="px-4 py-2.5 text-center text-[10px] text-slate-400 dark:text-slate-500 font-mono">#' + c.pos_geral + '</td>' +
+                    '<td class="px-4 py-2.5"><div class="flex items-center">' + starIcon + '<div class="font-bold text-slate-700 dark:text-slate-200 text-xs truncate max-w-[150px] lg:max-w-none">' + c.name + '</div></div><div class="mt-0.5 flex flex-wrap gap-1">' + badgesInfo + '</div>' + errorHtml + '</td>' +
+                    '<td class="px-4 py-2.5 text-center"><span class="pill ' + pillClass + '">' + st.label + '</span></td>' +
+                    '<td class="px-4 py-2.5 text-right font-mono text-[10px] text-slate-400 dark:text-slate-500">' + c.esp_score.toFixed(1) + '</td>' +
+                    '<td class="px-4 py-2.5 text-right font-mono text-[10px] text-slate-400 dark:text-slate-500">' + c.disc_score.toFixed(1) + '</td>' +
+                    '<td class="px-4 py-2.5 text-right font-extrabold font-mono text-xs text-indigo-700 dark:text-indigo-400">' + c.total_score.toFixed(2) + '</td>';
+                
+                fragment.appendChild(tr);
+            });
+
+            tbody.appendChild(fragment);
+            renderedCount += chunk.length;
+            document.getElementById('loadedCount').innerText = Math.min(renderedCount, list.length) + '/' + list.length;
+            spinner.classList.add('hidden');
+        }
+
+        // --- GAP ANALYSIS & RADAR ---
+        function calculateGap(candidate) {
+            var mainQuota = candidate.cotas.length > 1 ? candidate.cotas.filter(function(x){return x!=='AC'})[0] : 'AC';
+            var list = calculatedData.filter(function(c){ return c.cotas.includes(mainQuota) && !excludedIds.includes(c.id); });
+            var lastVaga = [].concat(list).reverse().find(function(c) { return c.computedStatus.label.includes('VAGA'); });
+            var lastCR = [].concat(list).reverse().find(function(c) { return c.computedStatus.label.includes('CR'); });
+            
+            var vagaCutoff = lastVaga ? lastVaga.total_score : 0;
+            var crCutoff = lastCR ? lastCR.total_score : 0;
+
+            var gapEl = document.getElementById('gapAnalysis');
+            var gapText = document.getElementById('gapText');
+            var stLabel = candidate.computedStatus.label;
+            
+            if(stLabel.includes('VAGA')) {
+                 gapEl.classList.remove('hidden');
+                 gapText.innerText = "Parabéns! Você está classificado dentro das vagas imediatas.";
+                 gapText.className = "text-xs font-bold text-emerald-600 dark:text-emerald-400";
+            } else if (stLabel.includes('CR')) {
+                 var diff = (vagaCutoff - candidate.total_score).toFixed(2);
+                 gapEl.classList.remove('hidden');
+                 gapText.innerText = "Você está no Cadastro Reserva. Aguarde convocações.";
+                 gapText.className = "text-xs font-bold text-sky-600 dark:text-sky-400";
+            } else {
+                 var diff = (crCutoff - candidate.total_score).toFixed(2);
+                 gapEl.classList.remove('hidden');
+                 gapText.innerText = "Faltam " + diff + " pontos para entrar no Cadastro Reserva.";
+                 gapText.className = "text-xs font-bold text-slate-500 dark:text-slate-400";
+            }
+        }
+
+        function calculatePercentile(candidate) {
+             var totalCandidates = allData.length;
+             var betterThan = allData.filter(function(c) { return c.total_score < candidate.total_score; }).length;
+             var percentile = Math.floor((betterThan / totalCandidates) * 100);
+             document.getElementById('mPercentil').innerText = 'Melhor que ' + percentile + '%';
+        }
+
+        function renderRadarChart(c) {
+             var ctx = document.getElementById('radarChart').getContext('2d');
+             if(radarChart) radarChart.destroy();
+             
+             // Normalize scores for better visualization (Approximate max values)
+             var maxEsp = 110; 
+             var maxDisc = 40;
+             var maxGeral = 30; // approx
+
+             radarChart = new Chart(ctx, {
+                 type: 'radar',
+                 data: {
+                     labels: ['Específica', 'Discursiva', 'Geral'],
+                     datasets: [{
+                         label: 'Desempenho',
+                         data: [
+                             (c.esp_score / maxEsp) * 100, 
+                             (c.disc_score / maxDisc) * 100, 
+                             (c.geral_score / maxGeral) * 100
+                         ],
+                         fill: true,
+                         backgroundColor: 'rgba(79, 70, 229, 0.2)',
+                         borderColor: 'rgb(79, 70, 229)',
+                         pointBackgroundColor: 'rgb(79, 70, 229)',
+                         pointBorderColor: '#fff',
+                         pointHoverBackgroundColor: '#fff',
+                         pointHoverBorderColor: 'rgb(79, 70, 229)'
+                     }]
+                 },
+                 options: {
+                     elements: { line: { borderWidth: 3 } },
+                     scales: {
+                         r: {
+                             angleLines: { display: false },
+                             suggestedMin: 0,
+                             suggestedMax: 100,
+                             ticks: { display: false }
+                         }
+                     },
+                     plugins: { legend: { display: false } }
+                 }
+             });
+        }
+        
+        // --- MODAL ---
+        window.openModal = function(c, pos, pillClass) {
+            currentModalCandidate = c; 
+            
+            document.getElementById('mName').innerText = c.name;
+            document.getElementById('mPos').innerText = '#' + c.pos_geral; 
+            document.getElementById('mId').innerText = c.id;
+            document.getElementById('mTotal').innerText = c.total_score.toFixed(2);
+            document.getElementById('mEsp').innerText = c.esp_score.toFixed(2);
+            document.getElementById('mDisc').innerText = c.disc_score.toFixed(2);
+            
+            document.getElementById('mStatusBadge').innerHTML = '<span class="pill ' + pillClass + ' text-sm px-4 py-1">' + c.computedStatus.label + '</span>';
+
+            // Update Exclusion Button Text
+            var btnExclude = document.getElementById('btnExclude');
+            if(excludedIds.includes(c.id)) {
+                btnExclude.innerText = "Reativar Candidato";
+                btnExclude.classList.add('bg-red-100');
+            } else {
+                btnExclude.innerText = "Marcar Desistente";
+                btnExclude.classList.remove('bg-red-100');
+            }
+
+            calculateGap(c);
+            calculatePercentile(c);
+
+            // Wait for modal transition to render chart
+            setTimeout(function() { renderRadarChart(c); }, 300);
+
+            var cotasContainer = document.getElementById('mCotasInfo');
+            cotasContainer.innerHTML = '';
+            
+            var hasDetails = false;
+            var addDetail = function(label, text, colorClass) {
+                if(text && text !== '-') {
+                    cotasContainer.innerHTML += 
+                        '<div class="text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 p-2 rounded border-l-4 ' + colorClass + '">' +
+                            '<strong class="uppercase text-[10px] opacity-70">' + label + '</strong><br/>' + text +
+                        '</div>';
+                    hasDetails = true;
+                }
+            };
+
+            addDetail('Pessoa Negra', c.res_pn_text, 'border-orange-400');
+            addDetail('PCD', c.res_pcd_text, 'border-blue-400');
+            addDetail('Indígena', c.res_pi_text, 'border-emerald-400');
+            addDetail('Quilombola', c.res_pq_text, 'border-purple-400');
+            
+            if(!hasDetails) cotasContainer.innerHTML = '<span class="text-xs text-slate-400 italic block text-center py-2">Nenhuma observação de cota registrada.</span>';
+
+            var modal = document.getElementById('detailModal');
+            var content = document.getElementById('modalContent');
+            var overlay = document.getElementById('modalOverlay');
+            
+            modal.classList.remove('hidden', 'pointer-events-none');
+            requestAnimationFrame(function() {
+                overlay.style.opacity = '1';
+                content.classList.remove('scale-95', 'opacity-0');
+                content.classList.add('scale-100', 'opacity-100');
+            });
+        };
+
+        function setupIntersectionObserver() {
+            var options = { root: document.getElementById('tableContainer'), rootMargin: '200px', threshold: 0.1 };
+            var sentinel = document.getElementById('scrollSentinel');
+            if(sentinel) {
+                observer = new IntersectionObserver(function(entries) {
+                    if(entries[0].isIntersecting && renderedCount < currentViewList.length) renderBatch();
+                }, options);
+                observer.observe(sentinel);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            var tableContainer = document.getElementById('tableContainer');
+            if(tableContainer) {
+                tableContainer.addEventListener('scroll', function() {
+                    var scrollGroup = document.getElementById('scrollGroup');
+                    if (tableContainer.scrollTop > 300) {
+                        scrollGroup.classList.remove('opacity-0', 'translate-y-10', 'pointer-events-none');
+                    } else {
+                        scrollGroup.classList.add('opacity-0', 'translate-y-10', 'pointer-events-none');
+                    }
+                });
+            }
+        });
+
+        var fileInput = document.getElementById('fileInput');
+        if(fileInput) {
+            fileInput.addEventListener('change', function(e) {
+                var file = e.target.files[0];
+                if(!file) return;
+                document.getElementById('loadingUpload').classList.remove('hidden');
+                var reader = new FileReader();
+                reader.onload = function(evt) { processJSON(evt.target.result); };
+                reader.readAsText(file);
+            });
+        }
+
+        // AUTO-INIT IF DATA EXISTS IN STORAGE
+        if(localStorage.getItem('cnu_v16_data')) checkDataAvailability();
+
     </script>
 </body>
 </html>
