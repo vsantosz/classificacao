@@ -27,7 +27,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <!-- HTML2Canvas para gerar imagem -->
+    <!-- Adicionando html2canvas para geração de imagens -->
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     
@@ -157,7 +157,7 @@
         .star-fav.inactive { color: #cbd5e1; } /* Slate-300 */
         .dark .star-fav.inactive { color: #475569; } /* Slate-600 */
         
-        .sortable-header { cursor: pointer; user-select: none; transition: color 0.2s; white-space: nowrap; }
+        .sortable-header { cursor: pointer; user-select: none; transition: color 0.2s; }
         .sortable-header:hover { color: #4f46e5; }
         .dark .sortable-header:hover { color: #818cf8; }
 
@@ -604,7 +604,7 @@
                     </div>
                     
                     <!-- RADAR CHART -->
-                    <div class="relative h-64 w-full"> <!-- Increased Height -->
+                    <div class="relative h-48 w-full">
                         <canvas id="radarChart"></canvas>
                     </div>
 
@@ -1068,9 +1068,7 @@
             if(allData.length === 0) return alert("Carregue dados primeiro.");
             var htmlContent = document.documentElement.outerHTML;
             var dataString = JSON.stringify(allData);
-            // Substitui apenas o conteúdo do script de dados, mantendo a estrutura segura
             var scriptTag = '<script id="json-data" type="application/json">' + dataString + '<\/script>'; 
-            // Regex ajustado para ser mais tolerante
             htmlContent = htmlContent.replace(/<script id="json-data" type="application\/json">([\s\S]*?)<\/script>/, scriptTag);
             var blob = new Blob([htmlContent], {type: 'text/html'});
             var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'Painel_CNU_All_In_One.html'; a.click();
