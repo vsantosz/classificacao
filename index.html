@@ -37,7 +37,7 @@
 
     <script>
         // --- CONFIGURAÇÃO GERAL ---
-        const SYSTEM_API_KEY = ""; 
+        const SYSTEM_API_KEY = "AIzaSyB3-Ejl-N27DPueARZmaXrUVFgw8hCbXnQ"; 
 
         // --- MANIFEST DINÂMICO ---
         const manifestData = {
@@ -73331,7 +73331,10 @@
             var filterName = document.getElementById('viewFilter').options[document.getElementById('viewFilter').selectedIndex].text;
             var dateStr = new Date().toLocaleDateString('pt-BR');
             doc.setFontSize(9);
-            doc.text('Lista: ' + filterName, 196, 18, { align: 'right' });
+            // --- CORREÇÃO DE EMOJI NO PDF ---
+    // Remove caracteres que não são texto/número/pontuação básica (remove emojis)
+			var cleanFilterName = filterName.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '').trim();
+			doc.text('Lista: ' + cleanFilterName, 196, 18, { align: 'right' });
             doc.text('Gerado em: ' + dateStr, 196, 26, { align: 'right' });
 
             var rows = currentViewList.map(function(c, i) {
@@ -74266,4 +74269,3 @@ var myIdentityId = localStorage.getItem('cnu_my_id');
     </script>
 </body>
 </html>
-
