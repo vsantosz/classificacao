@@ -580,58 +580,64 @@
 
         <!-- MODAL DETAIL & RADAR & SNIPER -->
         <div id="detailModal" class="fixed inset-0 z-[100] hidden flex items-center justify-center pointer-events-none p-4">
-            <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity opacity-0 pointer-events-auto" onclick="closeModal()" id="modalOverlay"></div>
-            <div id="modalContent" class="glass-modal w-full max-w-md bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-2xl transform scale-95 opacity-0 transition-all duration-300 pointer-events-auto flex flex-col max-h-[90vh] relative">
-                <button onclick="closeModal()" class="absolute top-4 right-4 p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors z-10"><i class="fa-solid fa-times"></i></button>
-                <div class="mb-5 pr-8">
-                    <span class="text-[9px] font-bold text-white bg-slate-800 dark:bg-slate-700 px-2 py-0.5 rounded uppercase tracking-widest inline-block mb-2 shadow-sm" id="mPos">#--</span>
-                    <h2 class="text-xl font-bold text-slate-800 dark:text-white leading-tight" id="mName">Nome</h2>
-                    <p class="text-[10px] font-mono text-slate-400 mt-1 flex items-center gap-1"><i class="fa-solid fa-id-card"></i> <span id="mId">--</span></p>
-                    <p id="mPercentil" class="text-[10px] font-bold text-indigo-500 mt-2 bg-indigo-50 dark:bg-indigo-900/30 inline-block px-2 py-0.5 rounded">Top --%</p>
-                </div>
+            <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 pointer-events-auto" onclick="closeModal()" id="modalOverlay"></div>
+            
+            <div id="modalContent" class="glass-modal w-full max-w-4xl bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-2xl transform scale-95 opacity-0 transition-all duration-200 pointer-events-auto flex flex-col md:flex-row gap-6 max-h-[90vh] overflow-hidden relative">
                 
-                <div class="overflow-y-auto custom-scroll pr-1 flex-1 space-y-5">
-                    <div class="text-center bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
-                        <p class="text-[9px] font-bold text-slate-400 uppercase mb-1">Situação</p>
-                        <div id="mStatusBadge" class="inline-block transform scale-110"></div>
-                        <div id="manualExclusionArea" class="mt-3 flex justify-center gap-2">
-                            <button onclick="toggleExclusion()" id="btnExclude" class="text-[10px] font-bold text-red-500 hover:bg-red-50 px-2 py-1 rounded border border-red-200 uppercase">Marcar Desistente</button>
-                            <button onclick="triggerSniperMode()" class="text-[10px] font-bold text-indigo-500 hover:bg-indigo-50 px-2 py-1 rounded border border-indigo-200 uppercase">Ver Vizinhos</button>
+                <button onclick="closeModal()" class="absolute top-4 right-4 p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors z-10"><i class="fa-solid fa-times"></i></button>
+
+                <div class="flex-1 flex flex-col gap-4 overflow-y-auto custom-scroll p-1 min-w-0">
+                    <div>
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-[10px] font-bold text-white bg-slate-800 dark:bg-slate-700 px-2 py-0.5 rounded uppercase tracking-widest shadow-sm" id="mPos">#--</span>
+                            <span id="mPercentil" class="text-[10px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded">Top --%</span>
                         </div>
-                    </div>
-                    
-                    <!-- RADAR CHART -->
-                    <div class="relative h-64 w-full"> <!-- Increased Height -->
-                        <canvas id="radarChart"></canvas>
+                        <h2 class="text-2xl font-black text-slate-800 dark:text-white leading-tight break-words" id="mName">Nome</h2>
+                        <p class="text-[10px] font-mono text-slate-400 mt-1 flex items-center gap-1"><i class="fa-solid fa-id-card"></i> <span id="mId">--</span></p>
                     </div>
 
-                    <!-- GAP ANALYSIS -->
+                    <div class="relative h-64 w-full flex-none bg-slate-50/50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-center p-2"> 
+                        <canvas id="radarChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="flex-1 flex flex-col gap-4 md:border-l md:border-slate-100 md:dark:border-slate-800 md:pl-6 overflow-y-auto custom-scroll p-1">
+                    
+                    <div class="flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 gap-3">
+                        <div id="mStatusBadge" class="transform scale-110"></div>
+                        <div class="flex gap-2">
+                             <button onclick="toggleExclusion()" id="btnExclude" class="text-[9px] font-bold text-red-500 hover:bg-red-50 px-3 py-1.5 rounded border border-red-200 uppercase transition-colors">Marcar Desistente</button>
+                             <button onclick="triggerSniperMode()" class="text-[9px] font-bold text-indigo-500 hover:bg-indigo-50 px-3 py-1.5 rounded border border-indigo-200 uppercase transition-colors">Ver Vizinhos</button>
+                        </div>
+                    </div>
+
                     <div id="gapAnalysis" class="bg-indigo-50 dark:bg-indigo-900/20 p-3 rounded-xl border border-indigo-100 dark:border-indigo-800 text-center hidden">
-                        <p class="text-[10px] font-bold text-indigo-500 uppercase mb-1">Distância para Vaga</p>
+                        <p class="text-[9px] font-bold text-indigo-500 uppercase mb-1">Análise de Vaga</p>
                         <p id="gapText" class="text-xs font-medium text-slate-700 dark:text-slate-300"></p>
                     </div>
 
-                    <div class="grid grid-cols-3 gap-0 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm">
-                        <div class="bg-indigo-50 dark:bg-indigo-900/20 p-3 text-center border-r border-indigo-100 dark:border-indigo-800"><p class="text-[9px] font-bold text-indigo-400 uppercase">Final</p><p class="text-lg font-black text-indigo-700 dark:text-indigo-400 leading-none mt-1" id="mTotal">--</p></div>
+                    <div class="grid grid-cols-3 gap-0 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm flex-none">
+                        <div class="bg-indigo-50 dark:bg-indigo-900/20 p-3 text-center border-r border-indigo-100 dark:border-indigo-800"><p class="text-[9px] font-bold text-indigo-400 uppercase">Final</p><p class="text-xl font-black text-indigo-700 dark:text-indigo-400 leading-none mt-1" id="mTotal">--</p></div>
                         <div class="bg-white dark:bg-slate-800 p-3 text-center border-r border-slate-100 dark:border-slate-700"><p class="text-[9px] font-bold text-slate-400 uppercase">Esp.</p><p class="text-sm font-bold text-slate-700 dark:text-slate-300 leading-none mt-1" id="mEsp">--</p></div>
                         <div class="bg-white dark:bg-slate-800 p-3 text-center"><p class="text-[9px] font-bold text-slate-400 uppercase">Disc.</p><p class="text-sm font-bold text-slate-700 dark:text-slate-300 leading-none mt-1" id="mDisc">--</p></div>
                     </div>
-                    <div>
-                        <h4 class="text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100 dark:border-slate-800 pb-2 mb-3 flex items-center gap-2"><i class="fa-solid fa-list-check"></i> Detalhes</h4>
+
+                    <div class="flex-grow">
+                        <h4 class="text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100 dark:border-slate-800 pb-2 mb-3 flex items-center gap-2"><i class="fa-solid fa-list-check"></i> Detalhes de Cotas</h4>
                         <div id="mCotasInfo" class="flex flex-col gap-2"></div>
                     </div>
                     
-                    <div class="grid grid-cols-2 gap-3">
-                         <button onclick="shareCandidateResult()" class="py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-lg flex items-center justify-center gap-2 text-xs font-bold uppercase transition-all">
-                            <i class="fa-brands fa-whatsapp text-lg"></i> Zap
+                    <div class="grid grid-cols-2 gap-3 mt-auto pt-2">
+                         <button onclick="shareCandidateResult()" class="py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-lg flex items-center justify-center gap-2 text-xs font-bold uppercase transition-all active:scale-95 hover:shadow-xl">
+                            <i class="fa-brands fa-whatsapp text-lg"></i> Enviar
                         </button>
-                         <button onclick="generateShareImage()" class="py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg flex items-center justify-center gap-2 text-xs font-bold uppercase transition-all">
-                            <i class="fa-solid fa-image text-lg"></i> Gerar Card
+                         <button onclick="generateShareImage()" class="py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg flex items-center justify-center gap-2 text-xs font-bold uppercase transition-all active:scale-95 hover:shadow-xl">
+                            <i class="fa-solid fa-image text-lg"></i> Salvar
                         </button>
                     </div>
                 </div>
             </div>
-            <!-- Hidden Share Card for Generation -->
+            
             <div id="shareCardContainer" class="absolute -top-[9999px] left-0 w-[400px] bg-white p-6 rounded-2xl shadow-none">
                  <div class="bg-gradient-to-r from-indigo-600 to-indigo-800 h-2 w-full absolute top-0 left-0"></div>
                  <div class="text-center mt-4">
@@ -650,7 +656,8 @@
                  <p class="text-[10px] text-slate-400 text-center mt-6">Gerado pelo Painel CNU Bloco 7</p>
             </div>
         </div>
-    </div>
+
+		</div>
 
      <!-- JSON DATA: COLE O JSON DENTRO DO COLCHETE ABAIXO (MANTENHA NO FINAL DO ARQUIVO) -->
     <script id="json-data" type="application/json">
@@ -73676,17 +73683,22 @@
              var ctx = document.getElementById('radarChart').getContext('2d');
              if(radarChart) radarChart.destroy();
              
-             // Normalize scores for better visualization (Approximate max values)
+             // Cores baseadas no tema
+             var isDark = document.documentElement.classList.contains('dark');
+             var colorGrid = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
+             var colorPoint = isDark ? '#fff' : '#4f46e5';
+
+             // Normalização
              var maxEsp = 110; 
              var maxDisc = 40;
-             var maxGeral = 30; // approx
+             var maxGeral = 30; // aprox
 
              radarChart = new Chart(ctx, {
                  type: 'radar',
                  data: {
                      labels: ['Específica', 'Discursiva', 'Geral'],
                      datasets: [{
-                         label: 'Desempenho',
+                         label: 'Performance',
                          data: [
                              (c.esp_score / maxEsp) * 100, 
                              (c.disc_score / maxDisc) * 100, 
@@ -73694,28 +73706,37 @@
                          ],
                          fill: true,
                          backgroundColor: 'rgba(79, 70, 229, 0.2)',
-                         borderColor: 'rgb(79, 70, 229)',
-                         pointBackgroundColor: 'rgb(79, 70, 229)',
+                         borderColor: '#4f46e5',
+                         pointBackgroundColor: colorPoint,
                          pointBorderColor: '#fff',
                          pointHoverBackgroundColor: '#fff',
-                         pointHoverBorderColor: 'rgb(79, 70, 229)'
+                         pointHoverBorderColor: '#4f46e5',
+                         pointRadius: 4,
+                         borderWidth: 2
                      }]
                  },
                  options: {
-                     elements: { line: { borderWidth: 3 } },
+                     responsive: true,
+                     maintainAspectRatio: false, // ESSENCIAL para preencher o modal
+                     animation: { duration: 400 }, // Animação mais rápida
                      scales: {
                          r: {
-                             angleLines: { display: false },
+                             angleLines: { color: colorGrid },
+                             grid: { color: colorGrid },
                              suggestedMin: 0,
                              suggestedMax: 100,
-                             ticks: { display: false }
+                             ticks: { display: false, backdropColor: 'transparent' },
+                             pointLabels: {
+                                 font: { size: 10, weight: 'bold' },
+                                 color: isDark ? '#cbd5e1' : '#64748b'
+                             }
                          }
                      },
                      plugins: { legend: { display: false } }
                  }
              });
         }
-        
+		
         // --- MODAL ---
         window.openModal = function(c, pos, pillClass) {
             currentModalCandidate = c; 
