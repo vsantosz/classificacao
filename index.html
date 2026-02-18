@@ -154,6 +154,55 @@
     </div>
   </div>
 
+  <!-- DONATION POPUP (one-time) -->
+  <div id="donationPopup" class="fixed inset-0 z-[99] hidden flex items-center justify-center p-6"
+    style="background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
+    <div
+      class="max-w-sm w-full bg-white dark:bg-[#121212] rounded-2xl shadow-2xl p-6 border border-slate-100 dark:border-[#262626] relative animate-fade-in">
+      <button onclick="closeDonation()"
+        class="absolute top-3 right-3 h-8 w-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-[#1a1a1a] text-slate-400 hover:text-slate-600 transition-colors">
+        <i class="fa-solid fa-times"></i>
+      </button>
+      <div class="text-center">
+        <div
+          class="w-14 h-14 bg-gradient-to-br from-emerald-400 to-emerald-600 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg mx-auto mb-4">
+          <i class="fa-solid fa-heart"></i>
+        </div>
+        <h3 class="text-lg font-black text-slate-800 dark:text-white mb-1">Apoie este projeto! 💚</h3>
+        <p class="text-xs text-slate-500 dark:text-[#a3a3a3] mb-4 leading-relaxed">
+          Este painel é <strong>100% gratuito</strong> e feito com dedicação para ajudar a comunidade do CNU Bloco 7.
+          Se ele te ajudou de alguma forma, considere fazer uma contribuição voluntária via PIX. Qualquer valor é
+          bem-vindo! 🙏
+        </p>
+        <div class="bg-slate-50 dark:bg-[#1a1a1a] border border-slate-200 dark:border-[#262626] rounded-xl p-4 mb-4">
+          <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Chave PIX (Celular)</p>
+          <div class="flex items-center justify-center gap-2">
+            <span class="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono tracking-wide"
+              id="pixKey">51983336509</span>
+            <button onclick="copyPix()" id="pixCopyBtn"
+              class="h-8 w-8 flex items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 transition-colors"
+              title="Copiar">
+              <i class="fa-solid fa-copy text-sm"></i>
+            </button>
+          </div>
+          <p id="pixCopied" class="text-[10px] text-emerald-500 font-bold mt-1 hidden">✓ Copiado!</p>
+        </div>
+        <p class="text-[10px] text-slate-400 italic mb-4">A doação é totalmente opcional. Este aviso não aparecerá
+          novamente.</p>
+        <div class="flex gap-2">
+          <button onclick="closeDonation()"
+            class="flex-1 py-3 rounded-xl text-xs font-bold text-slate-500 bg-slate-100 dark:bg-[#1a1a1a] hover:bg-slate-200 dark:hover:bg-[#262626] transition-colors">
+            Fechar
+          </button>
+          <button onclick="copyPix(); closeDonation()"
+            class="flex-1 py-3 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2">
+            <i class="fa-solid fa-copy"></i> Copiar PIX
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- MAIN APP LAYOUT -->
   <div class="layout-container opacity-0 transition-opacity duration-700" id="mainLayout">
 

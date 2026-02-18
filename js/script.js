@@ -23,12 +23,55 @@ var excludedIds = JSON.parse(localStorage.getItem('cnu_excluded') || '[]');
 var currentSort = { key: 'total_score', order: 'desc' };
 
 // --- GLOBAL EXPORTS ---
+
+// --- DONATION POPUP ---
+window.copyPix = function () {
+    var pixKey = document.getElementById('pixKey').innerText;
+    navigator.clipboard.writeText(pixKey).then(function () {
+        var copied = document.getElementById('pixCopied');
+        copied.classList.remove('hidden');
+        setTimeout(function () { copied.classList.add('hidden'); }, 2000);
+    }).catch(function () {
+        // Fallback for older browsers
+        var temp = document.createElement('textarea');
+        temp.value = pixKey;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        document.body.removeChild(temp);
+        var copied = document.getElementById('pixCopied');
+        copied.classList.remove('hidden');
+        setTimeout(function () { copied.classList.add('hidden'); }, 2000);
+    });
+};
+
+window.closeDonation = function () {
+    var popup = document.getElementById('donationPopup');
+    popup.style.opacity = '0';
+    setTimeout(function () {
+        popup.classList.add('hidden');
+        popup.style.opacity = '';
+    }, 300);
+    localStorage.setItem('cnu_donation_shown', 'true');
+};
+
+window.showDonationIfNeeded = function () {
+    if (!localStorage.getItem('cnu_donation_shown')) {
+        setTimeout(function () {
+            var popup = document.getElementById('donationPopup');
+            popup.classList.remove('hidden');
+        }, 1500);
+    }
+};
+
 window.acceptDisclaimer = function () {
     document.getElementById('introScreen').style.opacity = '0';
     setTimeout(function () {
         document.getElementById('introScreen').style.display = 'none';
         document.getElementById('mainLayout').style.opacity = '1';
         checkDataAvailability();
+        // Show donation popup on first visit only
+        showDonationIfNeeded();
     }, 500);
 };
 
